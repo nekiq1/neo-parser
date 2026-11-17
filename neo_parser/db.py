@@ -19,8 +19,10 @@ CREATE TABLE IF NOT EXISTS leads (
 '''
 
 class Database:
-    def __init__(self):
-        self.conn = sqlite3.connect(DB_PATH)
+    def __init__(self, db_path=DB_PATH):
+        db_path = Path(db_path)
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute(SCHEMA)
         self.conn.commit()

@@ -1,9 +1,8 @@
 import sys, csv
-from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,
  QPushButton,QLineEdit,QTableWidget,QTableWidgetItem,QFileDialog,QMessageBox,QComboBox,QFrame,
- QHeaderView,QProgressBar,QStatusBar,QStackedWidget)
+ QHeaderView,QProgressBar,QStatusBar)
 from .db import Database
 from .services import import_csv, audit_website, calculate_score
 
@@ -24,19 +23,30 @@ QProgressBar::chunk { background:#6d5dfc; border-radius:5px; }
 '''
 
 class AuditWorker(QThread):
-    progress = Signal(int,int)
+    progress = Signal(int, int)
+    result_ready = Signal(int, str, str, bool, int)
     finished_all = Signal()
-    def __init__(self, db, rows): super().__init__(); self.db=db; self.rows=rows; self.stop_requested=False
+
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = rows
+        self.stop_requested = False
+
     def run(self):
-        total=len(self.rows)
-        for i,row in enumerate(self.rows,1):
-            if self.stop_requested: break
-            status,title,form=audit_website(row['website'])
-            score=calculate_score(dict(row),status,form)
-            self.db.update_audit(row['id'],status,title,form,score)
-            self.progress.emit(i,total)
+        total = len(self.rows)
+        for index, row in enumerate(self.rows, 1):
+            if self.stop_requested:
+                break
+            status, title, has_form = audit_website(row['website'])
+            score = calculate_score(dict(row), status, has_form)
+            # Send results to the UI thread. SQLite connections must not be
+            # used from this worker thread.
+            self.result_ready.emit(row['id'], status, title, has_form, score)
+            self.progress.emit(index, total)
         self.finished_all.emit()
-    def stop(self): self.stop_requested=True
+
+    def stop(self):
+        self.stop_requested = True
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -48,7 +58,7 @@ class MainWindow(QMainWindow):
         sub=QLabel('LEAD INTELLIGENCE'); sub.setObjectName('Muted'); sl.addWidget(sub); sl.addSpacing(28)
         for name in ['Обзор','База лидов','Аудит сайтов']:
             b=QPushButton(name); b.setCursor(Qt.PointingHandCursor); b.clicked.connect(self.refresh); sl.addWidget(b)
-        sl.addStretch(); foot=QLabel('CEO Neki\nNeo Parser 0.1.0'); foot.setObjectName('Muted'); sl.addWidget(foot)
+        sl.addStretch(); foot=QLabel('CEO Neki\nNeo Parser 0.1.1'); foot.setObjectName('Muted'); sl.addWidget(foot)
         outer.addWidget(side)
         content=QVBoxLayout(); outer.addLayout(content,1)
         top=QHBoxLayout(); heading=QVBoxLayout(); title=QLabel('Рабочее пространство'); title.setStyleSheet('font-size:25px;font-weight:800'); desc=QLabel('Собирай, проверяй и квалифицируй потенциальных клиентов'); desc.setObjectName('Muted'); heading.addWidget(title); heading.addWidget(desc); top.addLayout(heading); top.addStretch()
@@ -125,11 +135,23 @@ class MainWindow(QMainWindow):
     def start_audit(self):
         rows=[r for r in self.db.all() if r['website']]
         if not rows: QMessageBox.information(self,'Аудит','В базе нет сайтов для проверки.'); return
-        self.worker=AuditWorker(self.db,rows); self.worker.progress.connect(self.on_progress); self.worker.finished_all.connect(self.audit_done); self.worker.start(); self.audit_btn.setEnabled(False); self.stop_btn.setEnabled(True); self.progress.setMaximum(len(rows)); self.progress.setValue(0)
+        self.worker=AuditWorker(rows); self.worker.result_ready.connect(self.on_audit_result); self.worker.progress.connect(self.on_progress); self.worker.finished_all.connect(self.audit_done); self.worker.start(); self.audit_btn.setEnabled(False); self.stop_btn.setEnabled(True); self.progress.setMaximum(len(rows)); self.progress.setValue(0)
+    def on_audit_result(self, lead_id, status, title, has_form, score):
+        self.db.update_audit(lead_id, status, title, has_form, score)
     def on_progress(self,i,total): self.progress.setValue(i); self.statusBar().showMessage(f'Проверка сайтов: {i}/{total}')
     def audit_done(self): self.audit_btn.setEnabled(True); self.stop_btn.setEnabled(False); self.populate(); self.statusBar().showMessage('Проверка завершена')
     def stop_audit(self):
-        if self.worker:self.worker.stop(); self.stop_btn.setEnabled(False)
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.stop_btn.setEnabled(False)
+            self.statusBar().showMessage('Остановка проверки…')
+
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait(9000)
+        self.db.conn.close()
+        event.accept()
 
 def main():
     app=QApplication(sys.argv); app.setApplicationName('Neo Parser'); w=MainWindow(); w.show(); sys.exit(app.exec())
