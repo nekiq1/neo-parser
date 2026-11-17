@@ -1,69 +1,110 @@
-# Neo Parser — CEO Neki
+# Neo Parser 2.0
 
-Desktop workspace for managing and qualifying business leads.
+Desktop-приложение для поиска и квалификации компаний, которым потенциально нужен сайт.
 
-## Supported builds
+**CEO Neki · Lead Intelligence**
 
-- **Windows 10/11 x64** — `Neo Parser.exe`
-- **macOS Apple Silicon (M1 and newer, arm64)** — `Neo-Parser-macOS-Apple-Silicon-arm64.dmg`
-- Intel Macs are intentionally not included.
+## Возможности
 
-The project uses one Python/PySide6 codebase and creates separate native builds on GitHub-hosted Windows and Apple Silicon macOS runners.
+- Автоматический поиск организаций через **официальный API 2ГИС** (Catalog / Places)
+- Выбор города (Москва, МО, Санкт-Петербург, ЛО) и ниши / произвольного запроса
+- Сохранение лидов в локальную SQLite-базу с дедупликацией
+- Аудит сайтов: доступность, HTTPS, формы, портфолио, каталог, мобильность
+- Объяснимый **Lead Score** 0–100 с причинами и уверенностью
+- Экспорт CSV / XLSX
+- Тёмный SaaS-интерфейс на PySide6 (Dashboard, Search, Leads, Audit, Categories, History, Settings)
+- Фоновые workers — UI не зависает; поиск и аудит можно остановить
 
-## Current MVP
+## Требования
 
-- Dark desktop UI (PySide6)
-- Local SQLite database
-- CSV import with Russian/English column aliases and common encoding detection
-- Duplicate suppression
-- Search and CRM statuses
-- Basic website availability/title/form audit
-- Heuristic lead score
-- CSV and XLSX export
-- Background website audit with progress and stop
+- Python 3.12+
+- API-ключ 2ГИС с доступом к Catalog / Places API  
+  Получение: [platform.2gis.ru](https://platform.2gis.ru) / [dev.2gis.ru](https://dev.2gis.ru)
 
-## Important scope
+Без ключа поиск **не выполняется** и **не имитируется**. Остальной функционал (импорт CSV, аудит, экспорт, CRM) работает.
 
-This is a clean project, not a decompilation or source-level port of LeadGen Mac. The supplied LeadGen Mac ZIP was a frozen PyInstaller application and did not contain the original editable Python source. The previous `nekiq1/parser-2gis` repository was not accessible during preparation, so its code has not been merged. Automated 2GIS data collection is not included yet. Add data sources only through permitted APIs/exports and respect their terms, rate limits, and privacy requirements.
-
-## Run locally
+## Установка и запуск
 
 ```bash
+cd NeoParser
 python -m venv .venv
-# Windows PowerShell:
-.venv\Scripts\Activate.ps1
-# macOS:
+
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+
+pip install -r requirements.txt
+cp .env.example .env   # опционально: пропишите TWOGIS_API_KEY=
+
 python main.py
 ```
 
-## Build with GitHub Actions
+Скрипты:
 
-1. Open the repository's **Actions** tab.
-2. Select **Build Neo Parser** and click **Run workflow** to create downloadable artifacts.
-3. To create a GitHub Release with both installers attached, push a version tag:
+- Windows: `scripts/run_windows.bat`
+- macOS: `scripts/run_macos.sh` (chmod +x)
 
-```bash
-git tag v0.1.1
-git push origin v0.1.1
+Ключ также можно вставить в разделе **Settings** — он сохраняется в `~/.neo_parser/settings.json`.
+
+## Структура
+
+```
+NeoParser/
+├── main.py
+├── requirements.txt
+├── .env.example
+├── neo_parser/
+│   ├── config.py          # города, ниши, пути
+│   ├── db.py              # SQLite
+│   ├── workers.py         # QThread search/audit
+│   ├── sources/
+│   │   ├── base.py        # SourceProvider ABC
+│   │   └── twogis.py      # 2GIS API
+│   ├── services/
+│   │   ├── audit.py
+│   │   ├── scoring.py
+│   │   ├── export.py
+│   │   └── search.py
+│   └── ui/
+│       ├── styles.py
+│       └── main_window.py
+├── tests/
+├── scripts/
+├── pyinstaller_windows.spec
+└── pyinstaller_macos.spec
 ```
 
-The workflow uses Node 24-compatible action versions: checkout v6, setup-python v6, upload-artifact v6, download-artifact v7, and softprops/action-gh-release v3.
+## Сборка
 
-### macOS first launch
+```bash
+pip install pyinstaller
+# Windows
+pyinstaller pyinstaller_windows.spec
+# macOS (Apple Silicon)
+pyinstaller pyinstaller_macos.spec
+```
 
-The DMG is currently unsigned and not notarized because Apple Developer signing credentials have not been configured. macOS may show a Gatekeeper warning on first launch. Public distribution should add Developer ID signing and notarization.
+Артефакты появятся в `dist/`. Подписи/нотаризации нет — при первом запуске ОС может показать предупреждение.
 
-The Windows executable is also unsigned, so Windows SmartScreen may show a warning.
+## Тесты
 
-## CSV columns
+```bash
+pytest tests/ -q
+```
 
-Required: `company` or `Название`.
+Тесты не требуют API-ключа и сети.
 
-Optional: `category`, `city`, `phone`, `email`, `website`, `vk`, `telegram`, `address`, `notes`.
+## Важно
 
-## Product identity
+- Соблюдайте условия использования 2ГИС API, лимиты и политику данных.
+- Приложение не обходит CAPTCHA и не парсит закрытые интерфейсы.
+- Секреты не коммитьте: `.env` и `settings.json` в `.gitignore`.
 
-**Neo Parser**  
-**CEO Neki**
+## Что требует API-ключа
+
+- Автопоиск на вкладке **Search** (2ГИС `/3.0/items`).
+
+## Что работает без ключа
+
+- Импорт CSV, таблица лидов, статусы CRM, аудит сайтов, Lead Score, экспорт, история, категории.

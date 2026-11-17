@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Neo Parser 2.0
+Comment=Lead Intelligence — поиск и квалификация клиентов
+Exec=python3 main.py
+Path=
+Icon=icon.png
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=Neo Parser
