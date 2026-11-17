@@ -1,10 +1,10 @@
-# Локальная сборка Windows x64
-# Запуск: powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
+# Сборка Neo Parser.exe для Windows x64
+# powershell -ExecutionPolicy Bypass -File scripts/build_windows.ps1
 $ErrorActionPreference = "Stop"
-Set-Location (Split-Path $PSScriptRoot -Parent)
+Set-Location (Join-Path $PSScriptRoot "..")
 
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+& .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 pip install -r requirements.txt pyinstaller
 
@@ -17,5 +17,6 @@ pyinstaller --noconfirm --clean --onefile --windowed `
   --collect-all shiboken6 `
   main.py
 
-Write-Host "OK → dist\Neo Parser.exe"
-Get-Item "dist\Neo Parser.exe" | Format-List FullName, Length
+if (!(Test-Path -LiteralPath "dist\Neo Parser.exe")) { throw "build failed" }
+Write-Host "Готово: dist\Neo Parser.exe"
+Get-Item -LiteralPath "dist\Neo Parser.exe" | Format-List FullName, Length

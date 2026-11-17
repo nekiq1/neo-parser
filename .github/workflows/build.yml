@@ -1,9 +1,10 @@
 name: Build Neo Parser
 
-# Цели:
-#   - Windows 10/11 x64  →  Neo Parser.exe
-#   - macOS Apple Silicon (M1 / M2 / M3 / M4)  →  DMG
-# Intel Mac намеренно не поддерживается.
+# Windows 10/11 x64  +  macOS Apple Silicon (M1+)
+# Intel Mac не поддерживается.
+#
+# Важно: GitHub часто не выделяет macos runner (очередь).
+# Windows job независим. Mac — best-effort в CI + локальный scripts/build_macos.sh.
 
 on:
   workflow_dispatch:
@@ -15,9 +16,6 @@ permissions:
   contents: write
 
 jobs:
-  # ─────────────────────────────────────────────
-  # Windows 10/11 x64
-  # ─────────────────────────────────────────────
   windows:
     name: Windows x64
     runs-on: windows-latest
@@ -52,9 +50,10 @@ jobs:
       - name: Verify
         shell: pwsh
         run: |
-          $exe = "dist/Neo Parser.exe"
-          if (!(Test-Path -LiteralPath $exe)) { throw "Missing $exe" }
-          Get-Item -LiteralPath $exe | Format-List FullName, Length
+          if (!(Test-Path -LiteralPath "dist/Neo Parser.exe")) {
+            throw "dist/Neo Parser.exe not found"
+          }
+          Get-Item -LiteralPath "dist/Neo Parser.exe" | Format-List FullName, Length
 
       - uses: actions/upload-artifact@v4
         with:
@@ -62,15 +61,11 @@ jobs:
           path: "dist/Neo Parser.exe"
           if-no-files-found: error
 
-  # ─────────────────────────────────────────────
-  # macOS Apple Silicon only (M1+)
-  # ─────────────────────────────────────────────
-  # runs-on: macos-latest  →  на GitHub-hosted сейчас arm64 (Apple Silicon).
-  # macos-14 у части аккаунтов недоступен — не используем.
-  # --target-architecture НЕ ставим: раннер уже native arm64.
   macos:
     name: macOS Apple Silicon (M1+)
     runs-on: macos-latest
+    # Не валим весь workflow, если GitHub не дал runner / job упал
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -79,16 +74,13 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Require Apple Silicon
+      - name: Require arm64 (M1+)
         run: |
           set -euo pipefail
-          ARCH="$(uname -m)"
-          echo "uname -m = $ARCH"
-          sw_vers
-          python -c "import platform; print(platform.machine(), platform.platform())"
-          if [ "$ARCH" != "arm64" ]; then
-            echo "::error::Нужен Apple Silicon runner (arm64). Сейчас: $ARCH"
-            echo "Intel Mac не поддерживается. Соберите локально на M1+ : scripts/build_macos.sh"
+          echo "arch=$(uname -m)"
+          sw_vers || true
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "::error::Need Apple Silicon arm64, got $(uname -m)"
             exit 1
           fi
 
@@ -111,29 +103,14 @@ jobs:
             --collect-all PySide6 \
             --collect-all shiboken6 \
             main.py
-
-          test -d "dist/Neo Parser.app"
           test -x "dist/Neo Parser.app/Contents/MacOS/Neo Parser"
-          file "dist/Neo Parser.app/Contents/MacOS/Neo Parser"
+          file "dist/Neo Parser.app/Contents/MacOS/Neo Parser" | tee /tmp/bininfo.txt
+          grep -qi arm64 /tmp/bininfo.txt
 
-      - name: Confirm binary is arm64
+      - name: Codesign + DMG
         run: |
           set -euo pipefail
-          BIN="dist/Neo Parser.app/Contents/MacOS/Neo Parser"
-          INFO="$(file "$BIN")"
-          echo "$INFO"
-          echo "$INFO" | grep -qi "arm64" || {
-            echo "::error::Бинарник не arm64 — это не сборка для M1+"
-            exit 1
-          }
-
-      - name: Ad-hoc codesign
-        run: |
           codesign --force --deep --sign - "dist/Neo Parser.app" || true
-
-      - name: DMG
-        run: |
-          set -euo pipefail
           hdiutil create \
             -volname "Neo Parser" \
             -srcfolder "dist/Neo Parser.app" \
@@ -142,18 +119,16 @@ jobs:
           ls -lh "dist/Neo-Parser-macOS-Apple-Silicon-arm64.dmg"
 
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: Neo-Parser-macOS-Apple-Silicon-arm64
           path: "dist/Neo-Parser-macOS-Apple-Silicon-arm64.dmg"
-          if-no-files-found: error
+          if-no-files-found: warn
 
-  # ─────────────────────────────────────────────
-  # Release (только с тега v*)
-  # ─────────────────────────────────────────────
   release:
     name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, macos]
+    needs: [windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -162,16 +137,18 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - run: find artifacts -type f -ls
+      - name: List artifacts
+        run: find artifacts -type f -ls || true
+
+      - name: Require Windows exe
+        run: test -f "artifacts/Neo Parser.exe"
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/Neo Parser.exe
-            artifacts/Neo-Parser-macOS-Apple-Silicon-arm64.dmg
-          fail_on_unmatched_files: true
+          files: artifacts/*
+          fail_on_unmatched_files: false
           body: |
             **Neo Parser**
             - Windows 10/11 x64 — `Neo Parser.exe`
-            - macOS Apple Silicon (M1+) — `Neo-Parser-macOS-Apple-Silicon-arm64.dmg`
+            - macOS Apple Silicon (M1+) — `Neo-Parser-macOS-Apple-Silicon-arm64.dmg` (если собрался в CI или добавлен вручную)
             Intel Mac не поддерживается.
