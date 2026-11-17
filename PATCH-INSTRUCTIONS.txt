@@ -1,0 +1,25 @@
+NEO PARSER — REPAIR PATCH
+
+Replace these files in your existing repository:
+- neo_parser/services.py
+- tests/test_core.py
+- .github/workflows/build.yml
+
+Do not delete or replace the rest of the project.
+
+Then run in PowerShell from the repository root:
+  python -m unittest discover -s tests -v
+
+If all tests pass:
+  git add neo_parser/services.py tests/test_core.py .github/workflows/build.yml
+  git commit -m "Fix CSV import and stabilize cross-platform builds"
+  git push origin main
+
+Then open GitHub Actions and click "Build Neo Parser" -> "Run workflow".
+Do not create a release tag until BOTH platform jobs pass.
+
+Important:
+- This patch fixes the confirmed CSV test failure.
+- macOS job must actually start on an arm64 runner. The workflow intentionally
+  checks uname -m and fails clearly if GitHub assigns an Intel runner.
+- No .exe or .dmg is included: they must be built by GitHub Actions.
