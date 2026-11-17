@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -198,7 +199,7 @@ class MainWindow(QMainWindow):
         lay.setSpacing(14)
         title = QLabel("Search")
         title.setObjectName("SectionTitle")
-        desc = QLabel("Поиск через сайт 2ГИС (как parser-2gis) — без API-ключа разработчика")
+        desc = QLabel("Поиск через сайт 2ГИС (Chromium) — без API-ключа разработчика")
         desc.setObjectName("Muted")
         lay.addWidget(title)
         lay.addWidget(desc)
@@ -222,15 +223,16 @@ class MainWindow(QMainWindow):
         form.addWidget(self.pages_spin)
         lay.addLayout(form)
 
-        from PySide6.QtWidgets import QCheckBox
         fl = QHBoxLayout()
         self.flt_phone = QCheckBox("Только с телефоном")
         self.flt_no_site = QCheckBox("Без сайта")
-        self.flt_no_site.setChecked(True)  # default for lead gen
+        self.flt_no_site.setChecked(True)
         self.flt_with_site = QCheckBox("Только с сайтом")
         self.flt_email = QCheckBox("С email")
-        for w in (self.flt_phone, self.flt_no_site, self.flt_with_site, self.flt_email):
-            fl.addWidget(w)
+        fl.addWidget(self.flt_phone)
+        fl.addWidget(self.flt_no_site)
+        fl.addWidget(self.flt_with_site)
+        fl.addWidget(self.flt_email)
         fl.addStretch()
         lay.addLayout(fl)
 
@@ -256,10 +258,10 @@ class MainWindow(QMainWindow):
         self.search_log.setPlaceholderText("Лог поиска появится здесь…")
         lay.addWidget(self.search_log, 1)
 
-        key_status = QLabel()
+        key_status = QLabel(
+            "Режим: 2ГИС Web (сайт 2gis.ru + Chromium). Ключ API не обязателен."
+        )
         key_status.setObjectName("Muted")
-        provider = TwoGisProvider()
-        key_status.setText("Режим: 2ГИС Web (сайт, без ключа) · Playwright/Chromium. Официальный API — опционально в Settings.")
         self.search_key_status = key_status
         lay.addWidget(key_status)
         return w
@@ -271,24 +273,22 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Запрос", "Введите нишу или поисковый запрос.")
             return
 
-        # Filters from UI checkboxes if present
-        filters = {}
-        if hasattr(self, "flt_phone") and self.flt_phone.isChecked():
-            filters["only_with_phone"] = True
-        if hasattr(self, "flt_no_site") and self.flt_no_site.isChecked():
-            filters["only_without_website"] = True
-        if hasattr(self, "flt_with_site") and self.flt_with_site.isChecked():
-            filters["only_with_website"] = True
-        if hasattr(self, "flt_email") and self.flt_email.isChecked():
-            filters["only_with_email"] = True
+        filters = {
+            "only_with_phone": self.flt_phone.isChecked(),
+            "only_without_website": self.flt_no_site.isChecked(),
+            "only_with_website": self.flt_with_site.isChecked(),
+            "only_with_email": self.flt_email.isChecked(),
+        }
 
         self.search_log.clear()
-        self.search_log.append(f"▶ Поиск «{query}» в {city} (2ГИС Web, без API-ключа)…")
+        self.search_log.append(f"▶ Поиск «{query}» в {city} (2ГИС Web)…")
         self.search_btn.setEnabled(False)
         self.search_stop_btn.setEnabled(True)
         self.search_progress.setVisible(True)
 
-        self.search_worker = SearchWorker(query, city, max_pages=self.pages_spin.value(), filters=filters)
+        self.search_worker = SearchWorker(
+            query, city, max_pages=self.pages_spin.value(), filters=filters
+        )
         self.search_worker.progress.connect(self.on_search_progress)
         self.search_worker.finished_ok.connect(self.on_search_done)
         self.search_worker.failed.connect(self.on_search_failed)
