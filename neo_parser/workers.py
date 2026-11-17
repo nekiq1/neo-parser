@@ -18,11 +18,12 @@ class SearchWorker(QThread):
     finished_ok = Signal(dict)
     failed = Signal(str)
 
-    def __init__(self, query: str, city: str, max_pages: int = 3):
+    def __init__(self, query: str, city: str, max_pages: int = 3, filters: dict | None = None):
         super().__init__()
         self.query = query
         self.city = city
         self.max_pages = max_pages
+        self.filters = filters or {}
         self._stop = False
 
     def stop(self) -> None:
@@ -39,6 +40,7 @@ class SearchWorker(QThread):
                 max_pages=self.max_pages,
                 stop_flag=lambda: self._stop,
                 on_progress=lambda name, found, added: self.progress.emit(name, found, added),
+                filters=self.filters,
             )
             db.close()
             self.finished_ok.emit(result)
