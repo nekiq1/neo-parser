@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Iterator, Optional
@@ -64,6 +65,52 @@ class TwoGisWebProvider(SourceProvider):
             "Дальше поиск идёт через сайт 2gis.ru: браузер открывает выдачу,\n"
             "приложение перехватывает JSON catalog.api.2gis (ключ разработчика не нужен)."
         )
+
+    @staticmethod
+    def _prepare_browser_environment() -> dict[str, str]:
+        """Use a persistent per-user browser directory, not PyInstaller's temp folder."""
+        BROWSER_DIR.mkdir(parents=True, exist_ok=True)
+        env = os.environ.copy()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(BROWSER_DIR)
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(BROWSER_DIR)
+        return env
+
+    def _ensure_chromium(self) -> None:
+        """Install Chromium once into the persistent app directory if absent.
+
+        Playwright's bundled CLI is used so this also works in PyInstaller one-file
+        builds, where ``python -m playwright`` would point at the frozen executable.
+        """
+        env = self._prepare_browser_environment()
+        marker = BROWSER_DIR / ".chromium-install-ok"
+        if marker.exists():
+            return
+
+        try:
+            from playwright._impl._driver import compute_driver_executable
+            driver_executable, driver_cli = compute_driver_executable()
+            command = [str(driver_executable), str(driver_cli), "install", "chromium"]
+            logger.info("Installing Playwright Chromium into %s", BROWSER_DIR)
+            result = subprocess.run(
+                command, env=env, capture_output=True, text=True,
+                timeout=900, check=False,
+            )
+            if result.returncode != 0:
+                details = (result.stderr or result.stdout or "").strip()[-4000:]
+                raise RuntimeError(
+                    "Не удалось установить Chromium для поиска 2ГИС. "
+                    "Проверьте подключение к интернету и повторите попытку. " + details
+                )
+            marker.write_text("ok", encoding="utf-8")
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "Установка Chromium заняла слишком много времени. "
+                "Проверьте интернет и повторите поиск."
+            ) from exc
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Не удалось подготовить Chromium: {exc}") from exc
 
     def search(
         self,
