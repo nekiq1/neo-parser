@@ -21,6 +21,7 @@ pyinstaller --noconfirm --clean --windowed \
   --osx-bundle-identifier com.neki.neoparser \
   --collect-all PySide6 \
   --collect-all shiboken6 \
+  --collect-all playwright \
   main.py
 
 codesign --force --deep --sign - "dist/Neo Parser.app" || true

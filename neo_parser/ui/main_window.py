@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setSpacing(14)
-        title = QLabel("Search")
+        title = QLabel("Поиск компаний")
         title.setObjectName("SectionTitle")
         desc = QLabel("Поиск через сайт 2ГИС (Chromium) — без API-ключа разработчика")
         desc.setObjectName("Muted")
@@ -226,7 +226,7 @@ class MainWindow(QMainWindow):
         fl = QHBoxLayout()
         self.flt_phone = QCheckBox("Только с телефоном")
         self.flt_no_site = QCheckBox("Без сайта")
-        self.flt_no_site.setChecked(True)
+        self.flt_no_site.setChecked(False)
         self.flt_with_site = QCheckBox("Только с сайтом")
         self.flt_email = QCheckBox("С email")
         fl.addWidget(self.flt_phone)
@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):
             return
 
         filters = {
+            "require_public_contact": True,
             "only_with_phone": self.flt_phone.isChecked(),
             "only_without_website": self.flt_no_site.isChecked(),
             "only_with_website": self.flt_with_site.isChecked(),
@@ -458,6 +459,9 @@ class MainWindow(QMainWindow):
             f"Телефон: {lead['phone']}<br>"
             f"Email: {lead['email']}<br>"
             f"Сайт: {lead['website']}<br>"
+            f"ВКонтакте: {lead['vk']}<br>"
+            f"Telegram: {lead['telegram']}<br>"
+            f"WhatsApp: {lead['whatsapp']}<br>"
             f"Адрес: {lead['address']}<br>"
             f"Источник: {lead['source']} · {lead['card_url']}<br>"
             f"Score: {lead['score']} (уверенность {lead['confidence']}%)<br><br>"

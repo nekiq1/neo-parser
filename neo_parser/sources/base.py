@@ -18,6 +18,7 @@ class CompanyResult:
     website: str = ""
     vk: str = ""
     telegram: str = ""
+    whatsapp: str = ""
     source: str = ""
     source_id: str = ""
     card_url: str = ""

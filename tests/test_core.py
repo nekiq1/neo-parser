@@ -11,6 +11,7 @@ from neo_parser.services.audit import normalize_url
 from neo_parser.services.scoring import calculate_score
 from neo_parser.sources.base import CompanyResult
 from neo_parser.sources.twogis import TwoGisProvider
+from neo_parser.sources.twogis_web import _item_to_company, _pass_filters
 
 
 class NormalizeUrlTests(unittest.TestCase):
@@ -71,10 +72,27 @@ class DatabaseTests(unittest.TestCase):
     def test_dedup(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = Database(Path(tmp) / "t.sqlite3")
-            item = {"company": "Тест", "phone": "+7000", "city": "СПб"}
+            item = {"company": "Тест", "phone": "+7000", "city": "СПб", "status": "Новый"}
             self.assertTrue(db.add_lead(item))
             self.assertFalse(db.add_lead(item))
             self.assertEqual(len(db.all()), 1)
+            db.update_status(1, "Заинтересован")
+            refreshed = {**item, "phone": "+7999", "telegram": "https://t.me/test"}
+            self.assertFalse(db.add_lead(refreshed))
+            row = db.get(1)
+            self.assertEqual(row["status"], "Заинтересован")
+            self.assertEqual(row["phone"], "+7999")
+            self.assertEqual(row["telegram"], "https://t.me/test")
+            self.assertEqual(len(db.all()), 1)
+            db.close()
+
+    def test_whatsapp_column_and_daily_backup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / "t.sqlite3")
+            self.assertIn("whatsapp", {r["name"] for r in db.conn.execute("PRAGMA table_info(leads)")})
+            self.assertTrue((Path(tmp) / "backups").exists())
+            db.add_lead({"company": "WA test", "city": "Moscow", "whatsapp": "https://wa.me/123"})
+            self.assertEqual(db.all()[0]["whatsapp"], "https://wa.me/123")
             db.close()
 
     def test_categories_seeded(self):
@@ -103,6 +121,24 @@ class ProviderTests(unittest.TestCase):
     def test_company_result(self):
         c = CompanyResult(name="ООО Тест", city="Москва", source="2GIS")
         self.assertEqual(c.name, "ООО Тест")
+
+    def test_extracts_whatsapp_and_public_contacts(self):
+        item = {
+            "id": "12345_abc",
+            "name": "Тест",
+            "contact_groups": [{
+                "contacts": [
+                    {"type": "whatsapp", "value": "https://wa.me/79990000000"},
+                    {"type": "telegram", "value": "https://t.me/test"},
+                ]
+            }]
+        }
+        company = _item_to_company(item, "Москва")
+        self.assertEqual(company.whatsapp, "https://wa.me/79990000000")
+        self.assertEqual(company.telegram, "https://t.me/test")
+        self.assertTrue(_pass_filters(company, {"require_public_contact": True}))
+        empty = _item_to_company({"name": "Без контактов"}, "Москва")
+        self.assertFalse(_pass_filters(empty, {"require_public_contact": True}))
 
 
 if __name__ == "__main__":

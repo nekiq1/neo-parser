@@ -13,13 +13,21 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import subprocess
+import time
+from pathlib import Path
 from typing import Iterator, Optional
 from urllib.parse import quote
 
+from ..config import APP_DIR
 from .base import CompanyResult, SourceProvider
 
 logger = logging.getLogger(__name__)
+
+BROWSER_DIR = APP_DIR / "playwright-browsers"
+NAVIGATION_ATTEMPTS = 3
 
 # Public site paths (not official region_id API)
 CITY_SLUGS = {
@@ -69,6 +77,8 @@ class TwoGisWebProvider(SourceProvider):
         if not self.is_configured():
             raise RuntimeError(self.configuration_help())
 
+        self._ensure_chromium()
+        self._prepare_browser_environment()
         from playwright.sync_api import sync_playwright
 
         slug = CITY_SLUGS.get(city)
@@ -127,15 +137,22 @@ class TwoGisWebProvider(SourceProvider):
                 else:
                     url = f"https://2gis.ru/{slug}/search/{quote(query)}/page/{page_no}"
                 logger.info("2GIS web open %s", url)
-                try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=120_000)
-                    # let XHR settle (map + catalog)
-                    page.wait_for_timeout(4500)
-                    # scroll to provoke more loads
-                    page.mouse.wheel(0, 2400)
-                    page.wait_for_timeout(2000)
-                except Exception as exc:
-                    logger.warning("page load issue: %s", exc)
+                loaded = False
+                for attempt in range(1, NAVIGATION_ATTEMPTS + 1):
+                    if stop_flag and stop_flag():
+                        break
+                    try:
+                        page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                        page.wait_for_timeout(3500)
+                        page.mouse.wheel(0, 2400)
+                        page.wait_for_timeout(1500)
+                        loaded = True
+                        break
+                    except Exception as exc:
+                        logger.warning("page load attempt %s failed: %s", attempt, exc)
+                        if attempt < NAVIGATION_ATTEMPTS:
+                            time.sleep(attempt * 2)
+                if not loaded:
                     continue
 
                 # Parse whatever responses we got so far
@@ -205,7 +222,7 @@ def _item_to_company(item: dict, city: str) -> CompanyResult | None:
     if isinstance(rubrics, list) and rubrics:
         category = (rubrics[0].get("name") if isinstance(rubrics[0], dict) else "") or ""
 
-    phone = email = website = vk = telegram = ""
+    phone = email = website = vk = telegram = whatsapp = ""
     for group in item.get("contact_groups") or []:
         if not isinstance(group, dict):
             continue
@@ -226,14 +243,20 @@ def _item_to_company(item: dict, city: str) -> CompanyResult | None:
                 vk = str(value)
             elif ctype == "telegram" and not telegram:
                 telegram = str(value)
+            elif ctype in ("whatsapp", "whats_app", "wa") and not whatsapp:
+                whatsapp = str(value)
 
     links = item.get("links") or {}
-    if not website and isinstance(links, dict):
-        site = links.get("website") or links.get("site")
-        if isinstance(site, list) and site:
-            website = site[0].get("url") or site[0].get("value") or ""
-        elif isinstance(site, dict):
-            website = site.get("url") or ""
+    if isinstance(links, dict):
+        if not website:
+            site = links.get("website") or links.get("site")
+            if isinstance(site, list) and site:
+                website = site[0].get("url") or site[0].get("value") or ""
+            elif isinstance(site, dict):
+                website = site.get("url") or ""
+        vk = vk or links.get("vkontakte") or links.get("vk") or ""
+        telegram = telegram or links.get("telegram") or ""
+        whatsapp = whatsapp or links.get("whatsapp") or links.get("wa") or ""
 
     source_id = str(item.get("id") or "")
     # strip hash suffix if present
@@ -250,6 +273,7 @@ def _item_to_company(item: dict, city: str) -> CompanyResult | None:
         website=website.strip(),
         vk=vk.strip(),
         telegram=telegram.strip(),
+        whatsapp=whatsapp.strip(),
         source="2GIS Web",
         source_id=source_id,
         card_url=card_url,
@@ -259,6 +283,10 @@ def _item_to_company(item: dict, city: str) -> CompanyResult | None:
 
 def _pass_filters(c: CompanyResult, filters: dict) -> bool:
     """Post-filters: only_with_phone, only_without_website, only_with_website, only_with_email."""
+    if filters.get("require_public_contact") and not any(
+        (c.phone, c.email, c.website, c.vk, c.telegram, c.whatsapp)
+    ):
+        return False
     if filters.get("only_with_phone") and not c.phone:
         return False
     if filters.get("only_with_email") and not c.email:

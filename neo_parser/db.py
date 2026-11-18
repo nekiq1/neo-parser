@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS leads (
     website TEXT DEFAULT '',
     vk TEXT DEFAULT '',
     telegram TEXT DEFAULT '',
+    whatsapp TEXT DEFAULT '',
     address TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     status TEXT DEFAULT 'Новый',
@@ -79,8 +80,44 @@ class Database:
         self.conn = sqlite3.connect(str(path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate_schema()
         self.conn.commit()
         self._seed_categories()
+        self.create_daily_backup()
+
+    def create_daily_backup(self, keep: int = 7) -> Path | None:
+        """Create one consistent SQLite backup per day and retain the newest copies."""
+        from datetime import date
+
+        backup_dir = self.path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        target = backup_dir / f"{self.path.stem}-{date.today().isoformat()}.sqlite3"
+        if target.exists():
+            return target
+        backup_conn = sqlite3.connect(str(target))
+        try:
+            self.conn.backup(backup_conn)
+        finally:
+            backup_conn.close()
+        backups = sorted(
+            backup_dir.glob(f"{self.path.stem}-*.sqlite3"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        for old in backups[keep:]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        return target
+
+    def _migrate_schema(self) -> None:
+        """Add columns introduced in newer app versions without losing user data."""
+        columns = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(leads)").fetchall()
+        }
+        if "whatsapp" not in columns:
+            self.conn.execute("ALTER TABLE leads ADD COLUMN whatsapp TEXT DEFAULT ''")
 
     def _seed_categories(self) -> None:
         from .config import DEFAULT_NICHES
@@ -94,32 +131,93 @@ class Database:
 
     # ── leads ──────────────────────────────────────────────
     def add_lead(self, data: dict[str, Any]) -> bool:
+        """Insert a new lead or refresh an existing record without resetting CRM data.
+
+        Returns True only when a new company row was created.
+        """
+        company = str(data.get("company") or "").strip()
+        city = str(data.get("city") or "").strip()
+        source_id = str(data.get("source_id") or "").strip()
+        phone = str(data.get("phone") or "").strip()
+        website = str(data.get("website") or "").strip()
+
+        existing = None
+        if source_id:
+            existing = self.conn.execute(
+                "SELECT id FROM leads WHERE source_id=? AND city=? LIMIT 1",
+                (source_id, city),
+            ).fetchone()
+        if existing is None and phone:
+            existing = self.conn.execute(
+                "SELECT id FROM leads WHERE phone=? AND city=? LIMIT 1",
+                (phone, city),
+            ).fetchone()
+        if existing is None and website:
+            existing = self.conn.execute(
+                "SELECT id FROM leads WHERE website=? AND city=? LIMIT 1",
+                (website, city),
+            ).fetchone()
+        if existing is None and company:
+            existing = self.conn.execute(
+                "SELECT id FROM leads WHERE lower(company)=lower(?) AND city=? LIMIT 1",
+                (company, city),
+            ).fetchone()
+
         fields = [
             "company", "category", "city", "phone", "email", "website",
-            "vk", "telegram", "address", "notes", "status", "score",
-            "score_reasons", "confidence", "source", "source_id",
-            "card_url", "discovered_at",
+            "vk", "telegram", "whatsapp", "address", "notes", "status", "score",
+            "score_reasons", "confidence", "website_status", "website_title",
+            "website_has_form", "website_https", "website_mobile",
+            "website_portfolio", "website_catalog", "website_contacts",
+            "source", "source_id", "card_url", "discovered_at",
         ]
         values = []
-        for k in fields:
-            v = data.get(k, "")
-            if k == "score":
-                v = int(v or 0)
-            elif k == "confidence":
-                v = int(v or 50)
-            elif k == "score_reasons" and isinstance(v, (list, dict)):
-                v = json.dumps(v, ensure_ascii=False)
-            elif k == "discovered_at" and not v:
-                v = _now()
-            values.append(v if v is not None else "")
+        for key in fields:
+            value = data.get(key, "")
+            if key == "score":
+                value = int(value or 0)
+            elif key == "confidence":
+                value = int(value or 50)
+            elif key in ("website_has_form", "website_https", "website_mobile",
+                         "website_portfolio", "website_catalog", "website_contacts"):
+                value = int(bool(value))
+            elif key == "score_reasons" and isinstance(value, (list, dict)):
+                value = json.dumps(value, ensure_ascii=False)
+            elif key == "discovered_at" and not value:
+                value = _now()
+            values.append(value if value is not None else "")
+
+        if existing:
+            # Refresh collected facts but retain the user's CRM status and notes.
+            update_fields = [
+                k for k in fields if k not in ("notes", "status", "discovered_at")
+            ]
+            update_values = [
+                (json.dumps(data.get(k), ensure_ascii=False)
+                 if k == "score_reasons" and isinstance(data.get(k), (list, dict))
+                 else int(data.get(k) or 0) if k == "score"
+                 else int(data.get(k) or 50) if k == "confidence"
+                 else int(bool(data.get(k))) if k in (
+                     "website_has_form", "website_https", "website_mobile",
+                     "website_portfolio", "website_catalog", "website_contacts"
+                 )
+                 else data.get(k, "") or "")
+                for k in update_fields
+            ]
+            self.conn.execute(
+                f"UPDATE leads SET {','.join(k + '=?' for k in update_fields)}, updated_at=? WHERE id=?",
+                (*update_values, _now(), existing["id"]),
+            )
+            self.conn.commit()
+            return False
 
         sql = (
-            f"INSERT OR IGNORE INTO leads ({','.join(fields)}) "
+            f"INSERT INTO leads ({','.join(fields)}) "
             f"VALUES ({','.join('?' for _ in fields)})"
         )
-        cur = self.conn.execute(sql, values)
+        self.conn.execute(sql, values)
         self.conn.commit()
-        return cur.rowcount > 0
+        return True
 
     def add_leads_bulk(self, items: Iterable[dict[str, Any]]) -> tuple[int, int]:
         added = 0
@@ -143,9 +241,10 @@ class Database:
             q = f"%{query}%"
             clauses.append(
                 "(company LIKE ? OR category LIKE ? OR city LIKE ? "
-                "OR phone LIKE ? OR website LIKE ? OR address LIKE ?)"
+                "OR phone LIKE ? OR email LIKE ? OR website LIKE ? OR address LIKE ? "
+                "OR vk LIKE ? OR telegram LIKE ? OR whatsapp LIKE ?)"
             )
-            params.extend([q] * 6)
+            params.extend([q] * 10)
         if status and status != "Все статусы":
             clauses.append("status = ?")
             params.append(status)

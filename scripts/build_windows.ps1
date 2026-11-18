@@ -15,6 +15,7 @@ pyinstaller --noconfirm --clean --onefile --windowed `
   --add-data "assets/icon.ico;assets" `
   --collect-all PySide6 `
   --collect-all shiboken6 `
+  --collect-all playwright `
   main.py
 
 Write-Host "OK → dist\Neo Parser.exe"

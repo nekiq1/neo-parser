@@ -47,6 +47,7 @@ jobs:
             @iconArgs `
             --collect-all PySide6 `
             --collect-all shiboken6 `
+            --collect-all playwright `
             main.py
 
       - name: Verify Windows executable
@@ -111,6 +112,7 @@ jobs:
             "${ICON_ARGS[@]}" \
             --collect-all PySide6 \
             --collect-all shiboken6 \
+            --collect-all playwright \
             main.py
 
       - name: Verify app bundle

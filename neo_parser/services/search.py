@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from ..db import Database
+from ..config import AUDIT_TIMEOUT
 from ..sources.base import CompanyResult
 from ..sources.twogis import TwoGisProvider
 from ..sources.twogis_web import TwoGisWebProvider
-from .audit import normalize_url
+from .audit import audit_website, normalize_url
 from .scoring import calculate_score
 
 
@@ -40,14 +41,26 @@ def run_search(
         for company in provider.search(query, city, **kwargs):
             if stop_flag and stop_flag():
                 break
-            if not isinstance(provider, TwoGisWebProvider) and not _pass_filters(company, filters):
+            if not _pass_filters(company, filters):
                 continue
             found += 1
             lead = _to_lead(company)
-            score, reasons, conf = calculate_score(lead)
-            lead["score"] = score
-            lead["score_reasons"] = reasons
-            lead["confidence"] = conf
+            # Every discovered website is checked before the lead is scored.
+            audit = audit_website(lead["website"], timeout=AUDIT_TIMEOUT)
+            score, reasons, conf = calculate_score(lead, audit)
+            lead.update({
+                "score": score,
+                "score_reasons": reasons,
+                "confidence": conf,
+                "website_status": audit.get("status", ""),
+                "website_title": audit.get("title", ""),
+                "website_has_form": audit.get("has_form", False),
+                "website_https": audit.get("https", False),
+                "website_mobile": audit.get("mobile", False),
+                "website_portfolio": audit.get("portfolio", False),
+                "website_catalog": audit.get("catalog", False),
+                "website_contacts": audit.get("contacts", False),
+            })
             if db.add_lead(lead):
                 added += 1
             if on_progress:
@@ -78,6 +91,10 @@ def _pick_provider():
 
 
 def _pass_filters(c: CompanyResult, filters: dict) -> bool:
+    if filters.get("require_public_contact", True) and not any(
+        (c.phone, c.email, c.website, c.vk, c.telegram, c.whatsapp)
+    ):
+        return False
     if filters.get("only_with_phone") and not c.phone:
         return False
     if filters.get("only_with_email") and not c.email:
@@ -99,6 +116,7 @@ def _to_lead(c: CompanyResult) -> dict:
         "website": normalize_url(c.website),
         "vk": c.vk,
         "telegram": c.telegram,
+        "whatsapp": c.whatsapp,
         "address": c.address,
         "source": c.source,
         "source_id": c.source_id,

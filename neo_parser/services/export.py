@@ -9,7 +9,7 @@ from typing import Iterable
 
 FIELDS = [
     "company", "category", "city", "phone", "email", "website",
-    "vk", "telegram", "address", "status", "score", "score_reasons",
+    "vk", "telegram", "whatsapp", "address", "status", "score", "score_reasons",
     "confidence", "website_status", "website_title", "source",
     "card_url", "discovered_at", "notes",
 ]
@@ -23,6 +23,7 @@ HEADERS_RU = {
     "website": "Сайт",
     "vk": "VK",
     "telegram": "Telegram",
+    "whatsapp": "WhatsApp",
     "address": "Адрес",
     "status": "Статус",
     "score": "Оценка",
