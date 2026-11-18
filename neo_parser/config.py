@@ -53,6 +53,52 @@ STATUSES = [
 ]
 
 
+def get_language() -> str:
+    """Read interface language; Russian is the default."""
+    if SETTINGS_PATH.exists():
+        try:
+            import json
+            value = json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("language", "ru")
+            return value if value in {"ru", "en"} else "ru"
+        except Exception:
+            pass
+    return "ru"
+
+
+def save_language(language: str) -> None:
+    import json
+    data = {}
+    if SETTINGS_PATH.exists():
+        try:
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data["language"] = language if language in {"ru", "en"} else "ru"
+    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_animations_enabled() -> bool:
+    if SETTINGS_PATH.exists():
+        try:
+            import json
+            return bool(json.loads(SETTINGS_PATH.read_text(encoding="utf-8")).get("animations", True))
+        except Exception:
+            pass
+    return True
+
+
+def save_animations_enabled(enabled: bool) -> None:
+    import json
+    data = {}
+    if SETTINGS_PATH.exists():
+        try:
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data["animations"] = bool(enabled)
+    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def get_api_key() -> str:
     """Return API key from env or settings file."""
     if TWOGIS_API_KEY:

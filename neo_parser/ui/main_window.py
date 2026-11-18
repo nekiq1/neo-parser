@@ -6,8 +6,9 @@ import json
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
+from PySide6.QtGui import QIcon, QPainter, QPen, QBrush, QColor, QFont
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QGroupBox,
+    QGridLayout,
     QPushButton,
     QSpinBox,
     QStackedWidget,
@@ -33,12 +36,111 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..config import CITIES, DEFAULT_NICHES, STATUSES, get_api_key, save_api_key
+from ..config import CITIES, DEFAULT_NICHES, STATUSES, get_api_key, save_api_key, get_language, save_language, get_animations_enabled, save_animations_enabled
 from ..db import Database
 from ..services.export import export_csv, export_xlsx
 from ..sources.twogis import TwoGisProvider
 from ..workers import AuditWorker, SearchWorker
 from .styles import DARK_STYLE
+
+
+TRANSLATIONS = {
+    "NEO PARSER": "NEO PARSER", "v2.0  ·  CEO Neki": "v2.1  ·  Lead Intelligence",
+    "Dashboard": "Обзор", "Search": "Поиск", "Leads": "Компании", "Website Audit": "Аудит сайтов",
+    "Categories": "Ниши", "History": "История", "Settings": "Настройки",
+    "Тёмная тема · 2ГИС API": "Локальная база · 2ГИС",
+    "Сводка по базе потенциальных клиентов": "Ключевые показатели и состояние вашей базы",
+    "Всего лидов": "Всего компаний", "Высокий приоритет (≥60)": "Высокий потенциал (≥60)",
+    "С сайтом": "Есть сайт", "Без сайта": "Без сайта", "Проверено сайтов": "Проверено сайтов",
+    "Поиск компаний": "Поиск компаний", "Поиск через сайт 2ГИС (Chromium) — без API-ключа разработчика": "Поиск через веб-каталог 2ГИС. API-ключ не обязателен.",
+    "Город:": "Город:", "Ниша / запрос:": "Ниша / запрос:", "Стр.:": "Страниц:",
+    "Только с телефоном": "Есть телефон", "Только с сайтом": "Только с сайтом", "С email": "Есть email",
+    "Запустить поиск": "Запустить поиск", "Остановить": "Остановить", "Лог поиска появится здесь…": "Здесь появится ход поиска…",
+    "Leads": "Компании", "Импорт CSV": "Импорт CSV", "Экспорт": "Экспорт",
+    "Поиск по названию, городу, телефону, сайту…": "Поиск по компании, городу, контакту или сайту…",
+    "Все статусы": "Все статусы", "Все города": "Все города", "Удалить": "Удалить",
+    "Сменить статус": "Изменить статус", "Проверка доступности, HTTPS, форм, портфолио и мобильности": "Проверка доступности, HTTPS, форм, портфолио и мобильной версии",
+    "Проверить все сайты": "Проверить все сайты", "Ниши для быстрого выбора в поиске": "Управляйте списком поисковых ниш",
+    "Новая ниша…": "Добавить новую нишу…", "Добавить": "Добавить", "Удалить выбранную (только пользовательские)": "Удалить выбранную нишу",
+    "История поисковых задач": "Последние поисковые задачи", "Дата": "Дата", "Город": "Город", "Запрос": "Запрос",
+    "Найдено": "Найдено", "Добавлено": "Добавлено", "API-ключи и параметры": "Язык, внешний вид и подключение источников",
+    "API-ключ 2ГИС (Catalog / Places)": "API-ключ 2ГИС (необязательно)", "Вставьте ключ…": "Вставьте API-ключ…",
+    "Сохранить ключ": "Сохранить ключ", "Настройки": "Настройки", "Готово": "Готово",
+    "Язык интерфейса": "Язык интерфейса", "Русский": "Русский", "Английский": "Английский",
+    "Внешний вид": "Внешний вид", "Тёмная тема": "Тёмная тема", "Анимации интерфейса": "Плавные анимации интерфейса",
+    "Сохранить настройки": "Сохранить настройки", "Настройки сохранены.": "Настройки сохранены.",
+    "Обзор базы": "Обзор базы", "Активность базы": "Активность базы", "Рабочее пространство Neo Parser": "Рабочее пространство Neo Parser",
+    "Находите компании, оценивайте их цифровое присутствие и ведите работу с лидами в одной системе.": "Находите компании, оценивайте их цифровое присутствие и ведите работу с лидами в одной системе.",
+    "Перейти к поиску  →": "Перейти к поиску  →", "●  Поиск готов к запуску": "●  Поиск готов к запуску", "Компании с сайтом и без сайта": "Компании с сайтом и без сайта",
+    "Потенциал базы": "Потенциал базы", "Сильные кандидаты": "Высокий приоритет", "Аудит": "Аудит",
+    "2ГИС Web · Chromium": "2ГИС Web · Chromium", "Поиск готов к запуску": "Поиск готов к запуску",
+    "База хранится локально на этом компьютере": "База данных хранится локально на этом компьютере",
+}
+
+EN_TRANSLATIONS = {
+    "Обзор": "Overview", "Обзор базы": "Database overview", "Поиск компаний": "Company search", "Поиск": "Search", "Компании": "Companies", "Аудит сайтов": "Website audit",
+    "Ниши": "Niches", "История": "History", "Настройки": "Settings", "Готово": "Ready",
+    "Всего компаний": "Total companies", "Высокий потенциал (≥60)": "High potential (≥60)",
+    "Есть сайт": "Has website", "Без сайта": "No website", "Проверено сайтов": "Websites audited",
+    "Ключевые показатели и состояние вашей базы": "Key metrics and database health",
+    "Компании с сайтом и без сайта": "Companies with and without a website", "Активность базы": "Database activity", "Рабочее пространство Neo Parser": "Neo Parser workspace",
+    "Находите компании, оценивайте их цифровое присутствие и ведите работу с лидами в одной системе.": "Find companies, assess their digital presence and manage leads in one workspace.",
+    "Перейти к поиску  →": "Go to search  →", "●  Поиск готов к запуску": "●  Search is ready", "Поиск готов к запуску": "Search is ready",
+    "Высокий приоритет": "High priority", "Язык интерфейса": "Interface language", "Русский": "Russian", "Английский": "English",
+    "Внешний вид": "Appearance", "Тёмная тема": "Dark theme", "Плавные анимации интерфейса": "Smooth interface animations",
+    "Сохранить настройки": "Save settings", "Настройки сохранены.": "Settings saved.",
+    "Компания": "Company", "Ниша": "Niche", "Город": "City", "Телефон": "Phone", "Сайт": "Website",
+    "Аудит": "Audit", "Оценка": "Score", "Увер.": "Confidence", "Статус": "Status",
+    "Новый": "New", "Связался": "Contacted", "Заинтересован": "Interested", "Переговоры": "Negotiation", "Клиент": "Customer", "Отказ": "Declined",
+    "Дата": "Date", "Запрос": "Query", "Найдено": "Found", "Добавлено": "Added",
+    "Только с телефоном": "Has phone", "С email": "Has email", "Без сайта": "No website", "Только с сайтом": "Website only",
+    "Поиск через сайт 2ГИС (Chromium) — без API-ключа разработчика": "Search via 2GIS public website using Chromium. No developer API key required.",
+    "Проверка доступности, HTTPS, форм, портфолио и мобильности": "Checks availability, HTTPS, forms, portfolio and mobile layout",
+    "Ниши для быстрого выбора в поиске": "Manage saved search niches",
+    "История поисковых задач": "Search task history", "API-ключи и параметры": "Language, appearance and source settings",
+    "База данных: ": "Database: ", "Ключ сохранён.": "API key saved.",
+    "Ключ можно получить на https://platform.2gis.ru\nТакже поддерживается переменная окружения TWOGIS_API_KEY.\nКлюч хранится локально в ~/.neo_parser/settings.json и не попадает в Git.": "Get a key at https://platform.2gis.ru\nThe TWOGIS_API_KEY environment variable is also supported.\nThe key is stored locally in ~/.neo_parser/settings.json and is never committed to Git.",
+    "Добавить новую нишу…": "Add a niche…", "Добавить": "Add", "Удалить выбранную нишу": "Remove selected niche",
+    "Запустить поиск": "Start search", "Остановить": "Stop", "Импорт CSV": "Import CSV", "Экспорт": "Export",
+    "Все статусы": "All statuses", "Все города": "All cities", "Удалить": "Delete", "Изменить статус": "Change status",
+    "Проверить все сайты": "Audit all websites", "Город:": "City:", "Ниша / запрос:": "Niche / query:", "Страниц:": "Pages:",
+    "Есть телефон": "Has phone", "Только с сайтом": "Website only", "Есть email": "Has email",
+    "Здесь появится ход поиска…": "Search activity will appear here…", "Поиск по компании, городу, контакту или сайту…": "Search company, city, contact or website…",
+    "Последние поисковые задачи": "Recent search tasks", "Дата": "Date", "Город": "City", "Запрос": "Query", "Найдено": "Found", "Добавлено": "Added",
+    "API-ключ 2ГИС (необязательно)": "2GIS API key (optional)", "Вставьте API-ключ…": "Paste API key…", "Сохранить ключ": "Save key",
+}
+
+class MetricChart(QWidget):
+    """Small native Qt chart; no external plotting dependency."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.values = [0, 0, 0]
+        self.labels = ["Есть сайт", "Без сайта", "Проверено"]
+        self.setMinimumHeight(170)
+
+    def set_values(self, values):
+        self.values = [max(0, int(v)) for v in values]
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect().adjusted(12, 12, -12, -12)
+        maxv = max(self.values + [1])
+        colors = [QColor("#42d8cf"), QColor("#4288e8"), QColor("#a58bff")]
+        row_h = max(38, rect.height() // 3)
+        for i, (label, value) in enumerate(zip(self.labels, self.values)):
+            y = rect.top() + i * row_h
+            p.setPen(QColor("#9aabc0")); p.setFont(QFont("Segoe UI", 9, QFont.DemiBold))
+            p.drawText(rect.left(), y + 13, label)
+            p.setPen(QColor("#eaf2ff")); p.setFont(QFont("Segoe UI", 10, QFont.Bold))
+            p.drawText(rect.right() - 34, y + 13, str(value))
+            track = rect.adjusted(0, 20, 0, 0)
+            track.setTop(y + 21); track.setHeight(9); track.setWidth(rect.width())
+            p.setPen(Qt.NoPen); p.setBrush(QColor("#1c2b3d")); p.drawRoundedRect(track, 4, 4)
+            fill = track; fill.setWidth(int(track.width() * value / maxv))
+            p.setBrush(colors[i]); p.drawRoundedRect(fill, 4, 4)
+        p.end()
 
 
 class MainWindow(QMainWindow):
@@ -48,21 +150,24 @@ class MainWindow(QMainWindow):
         self.search_worker: SearchWorker | None = None
         self.audit_worker: AuditWorker | None = None
         self.nav_buttons: dict[str, QPushButton] = {}
+        self.language = get_language()
+        self.page_animation = None
+        self.animations_enabled = get_animations_enabled()
 
-        self.setWindowTitle("Neo Parser 2.0 — Lead Intelligence")
-        self.resize(1400, 860)
-        self.setMinimumSize(1100, 700)
+        self.setWindowTitle("Neo Parser 2.1 — Lead Intelligence")
+        self.resize(1500, 920)
+        self.setMinimumSize(1120, 740)
         self._apply_window_icon()
 
         root = QWidget()
         outer = QHBoxLayout(root)
-        outer.setContentsMargins(16, 16, 16, 16)
-        outer.setSpacing(14)
+        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setSpacing(16)
 
         # Sidebar
         side = QFrame()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(220)
+        side.setFixedWidth(236)
         sl = QVBoxLayout(side)
         sl.setContentsMargins(14, 18, 14, 18)
         sl.setSpacing(4)
@@ -70,19 +175,23 @@ class MainWindow(QMainWindow):
         brand = QLabel("NEO PARSER")
         brand.setObjectName("Brand")
         sl.addWidget(brand)
-        sub = QLabel("v2.0  ·  CEO Neki")
+        brand_tag = QLabel("LEAD INTELLIGENCE PLATFORM")
+        brand_tag.setObjectName("BrandAccent")
+        sl.addWidget(brand_tag)
+        sl.addSpacing(5)
+        sub = QLabel("v2.1  ·  CEO Neki")
         sub.setObjectName("Muted")
         sl.addWidget(sub)
         sl.addSpacing(20)
 
         for key, title in [
-            ("dashboard", "Dashboard"),
-            ("search", "Search"),
-            ("leads", "Leads"),
-            ("audit", "Website Audit"),
-            ("categories", "Categories"),
-            ("history", "History"),
-            ("settings", "Settings"),
+            ("dashboard", "Обзор"),
+            ("search", "Поиск"),
+            ("leads", "Компании"),
+            ("audit", "Аудит сайтов"),
+            ("categories", "Ниши"),
+            ("history", "История"),
+            ("settings", "Настройки"),
         ]:
             btn = QPushButton(title)
             btn.setObjectName("Nav")
@@ -115,6 +224,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Готово")
         self.switch_page("dashboard")
         self.refresh_all()
+        self.apply_language(self.language)
 
     # ── navigation ─────────────────────────────────────────
     def switch_page(self, key: str) -> None:
@@ -123,6 +233,15 @@ class MainWindow(QMainWindow):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
         self.stack.setCurrentWidget(self.pages[key])
+        if self.animations_enabled:
+            effect = QGraphicsOpacityEffect(self.pages[key])
+            self.pages[key].setGraphicsEffect(effect)
+            self.page_animation = QPropertyAnimation(effect, b"opacity", self)
+            self.page_animation.setDuration(190)
+            self.page_animation.setStartValue(0.55)
+            self.page_animation.setEndValue(1.0)
+            self.page_animation.setEasingCurve(QEasingCurve.OutCubic)
+            self.page_animation.start()
         if key == "leads":
             self.populate_leads()
         elif key == "dashboard":
@@ -159,29 +278,61 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setSpacing(16)
-        title = QLabel("Dashboard")
+        title = QLabel("Обзор базы")
         title.setObjectName("SectionTitle")
-        desc = QLabel("Сводка по базе потенциальных клиентов")
+        desc = QLabel("Ключевые показатели и состояние вашей базы")
         desc.setObjectName("Muted")
         lay.addWidget(title)
         lay.addWidget(desc)
 
-        cards = QHBoxLayout()
-        self.dash_total_f, self.dash_total = self._card("Всего лидов")
-        self.dash_hot_f, self.dash_hot = self._card("Высокий приоритет (≥60)")
-        self.dash_site_f, self.dash_site = self._card("С сайтом")
+        hero = QFrame(); hero.setObjectName("Hero")
+        hl = QHBoxLayout(hero); hl.setContentsMargins(24, 22, 24, 22)
+        left = QVBoxLayout()
+        htitle = QLabel("Рабочее пространство Neo Parser")
+        htitle.setObjectName("HeroTitle")
+        hdesc = QLabel("Находите компании, оценивайте их цифровое присутствие и ведите работу с лидами в одной системе.")
+        hdesc.setObjectName("HeroText"); hdesc.setWordWrap(True)
+        left.addWidget(htitle); left.addWidget(hdesc)
+        self.hero_status = QLabel("●  Поиск готов к запуску")
+        self.hero_status.setObjectName("MetricAccent")
+        left.addSpacing(8); left.addWidget(self.hero_status)
+        hl.addLayout(left, 1)
+        self.hero_action = QPushButton("Перейти к поиску  →")
+        self.hero_action.setObjectName("Primary")
+        self.hero_action.clicked.connect(lambda: self.switch_page("search"))
+        hl.addWidget(self.hero_action, 0, Qt.AlignVCenter)
+        lay.addWidget(hero)
+
+        cards = QGridLayout(); cards.setSpacing(12)
+        self.dash_total_f, self.dash_total = self._card("Всего компаний")
+        self.dash_hot_f, self.dash_hot = self._card("Высокий потенциал (≥60)")
+        self.dash_site_f, self.dash_site = self._card("Есть сайт")
         self.dash_nosite_f, self.dash_nosite = self._card("Без сайта")
-        for f in (self.dash_total_f, self.dash_hot_f, self.dash_site_f, self.dash_nosite_f):
-            cards.addWidget(f)
+        self.dash_audited_f, self.dash_audited = self._card("Проверено сайтов")
+        for i, frame in enumerate((self.dash_total_f, self.dash_hot_f, self.dash_site_f, self.dash_nosite_f, self.dash_audited_f)):
+            frame.setObjectName("MetricCard")
+            cards.addWidget(frame, 0, i)
         lay.addLayout(cards)
 
-        info = QLabel(
-            "Поиск компаний выполняется через официальный API 2ГИС. "
-            "Без API-ключа данные не подставляются — настройте ключ в Settings."
-        )
-        info.setObjectName("Muted")
-        info.setWordWrap(True)
-        lay.addWidget(info)
+        lower = QHBoxLayout(); lower.setSpacing(14)
+        chart_card = QFrame(); chart_card.setObjectName("Card")
+        c_lay = QVBoxLayout(chart_card); c_lay.setContentsMargins(18, 16, 18, 16)
+        c_title = QLabel("Компании с сайтом и без сайта"); c_title.setObjectName("CardLabel")
+        self.metric_chart = MetricChart()
+        c_lay.addWidget(c_title); c_lay.addWidget(self.metric_chart)
+        lower.addWidget(chart_card, 3)
+        info_card = QFrame(); info_card.setObjectName("Card")
+        i_lay = QVBoxLayout(info_card); i_lay.setContentsMargins(18, 16, 18, 16)
+        it = QLabel("Активность базы"); it.setObjectName("CardLabel")
+        self.dash_activity = QLabel("База данных хранится локально на этом компьютере")
+        self.dash_activity.setWordWrap(True); self.dash_activity.setObjectName("Muted")
+        self.dash_audit_progress = QProgressBar(); self.dash_audit_progress.setRange(0, 100)
+        self.dash_audit_progress.setValue(0)
+        self.dash_audit_label = QLabel("Аудит: 0% проверено"); self.dash_audit_label.setObjectName("MetricAccent")
+        i_lay.addWidget(it); i_lay.addSpacing(8); i_lay.addWidget(self.dash_activity)
+        i_lay.addStretch(); i_lay.addWidget(self.dash_audit_label); i_lay.addWidget(self.dash_audit_progress)
+        lower.addWidget(info_card, 2)
+        lay.addLayout(lower)
         lay.addStretch()
         return w
 
@@ -191,6 +342,11 @@ class MainWindow(QMainWindow):
         self.dash_hot.setText(str(s["hot"]))
         self.dash_site.setText(str(s["with_site"]))
         self.dash_nosite.setText(str(s["no_site"]))
+        self.dash_audited.setText(str(s.get("audited", 0)))
+        self.metric_chart.set_values([s["with_site"], s["no_site"], s.get("audited", 0)])
+        pct = int((s.get("audited", 0) / max(s["with_site"], 1)) * 100)
+        self.dash_audit_progress.setValue(min(100, pct))
+        self.dash_audit_label.setText(f"Аудит: {min(100, pct)}% проверено")
 
     # ── Search ─────────────────────────────────────────────
     def _build_search(self) -> QWidget:
@@ -330,7 +486,7 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(w)
         lay.setSpacing(12)
         header = QHBoxLayout()
-        title = QLabel("Leads")
+        title = QLabel("Компании")
         title.setObjectName("SectionTitle")
         header.addWidget(title)
         header.addStretch()
@@ -385,6 +541,8 @@ class MainWindow(QMainWindow):
     def populate_leads(self) -> None:
         query = self.leads_search.text().strip()
         status = self.leads_status.currentText()
+        if self.language == "en":
+            status = next((ru for ru, en in EN_TRANSLATIONS.items() if en == status), status)
         city = self.leads_city.currentText()
         rows = self.db.all(query=query, status=status, city=city)
         self.leads_table.setSortingEnabled(False)
@@ -401,7 +559,7 @@ class MainWindow(QMainWindow):
                 r["website_status"],
                 str(r["score"]),
                 str(r["confidence"] or ""),
-                r["status"],
+                self._display_status(r["status"]),
             ]
             for col, val in enumerate(values):
                 item = QTableWidgetItem(str(val or ""))
@@ -412,6 +570,9 @@ class MainWindow(QMainWindow):
                 self.leads_table.setItem(row, col, item)
         self.leads_table.setSortingEnabled(True)
         self.statusBar().showMessage(f"Лидов: {len(rows)}")
+
+    def _display_status(self, status: str) -> str:
+        return EN_TRANSLATIONS.get(status, status) if self.language == "en" else status
 
     def selected_lead_id(self) -> int | None:
         row = self.leads_table.currentRow()
@@ -434,8 +595,11 @@ class MainWindow(QMainWindow):
             return
         from PySide6.QtWidgets import QInputDialog
 
-        status, ok = QInputDialog.getItem(self, "Статус", "Новый статус:", STATUSES, 0, False)
+        labels = [self._display_status(item) for item in STATUSES]
+        status, ok = QInputDialog.getItem(self, "Status" if self.language == "en" else "Статус", "New status:" if self.language == "en" else "Новый статус:", labels, 0, False)
         if ok and status:
+            if self.language == "en":
+                status = next((ru for ru, en in EN_TRANSLATIONS.items() if en == status), status)
             self.db.update_status(lid, status)
             self.populate_leads()
 
@@ -540,7 +704,7 @@ class MainWindow(QMainWindow):
     def _build_audit(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        title = QLabel("Website Audit")
+        title = QLabel("Аудит сайтов")
         title.setObjectName("SectionTitle")
         desc = QLabel("Проверка доступности, HTTPS, форм, портфолио и мобильности")
         desc.setObjectName("Muted")
@@ -611,7 +775,7 @@ class MainWindow(QMainWindow):
     def _build_categories(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        title = QLabel("Categories")
+        title = QLabel("Ниши")
         title.setObjectName("SectionTitle")
         desc = QLabel("Ниши для быстрого выбора в поиске")
         desc.setObjectName("Muted")
@@ -668,7 +832,7 @@ class MainWindow(QMainWindow):
     def _build_history(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        title = QLabel("History")
+        title = QLabel("История")
         title.setObjectName("SectionTitle")
         desc = QLabel("История поисковых задач")
         desc.setObjectName("Muted")
@@ -700,17 +864,31 @@ class MainWindow(QMainWindow):
     def _build_settings(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        title = QLabel("Settings")
+        title = QLabel("Настройки")
         title.setObjectName("SectionTitle")
         desc = QLabel("API-ключи и параметры")
         desc.setObjectName("Muted")
         lay.addWidget(title)
         lay.addWidget(desc)
 
+        prefs = QFrame(); prefs.setObjectName("Card")
+        pl = QVBoxLayout(prefs); pl.setContentsMargins(18, 16, 18, 16)
+        pl.addWidget(QLabel("Внешний вид"))
+        pl.addWidget(QLabel("Язык интерфейса"))
+        self.language_combo = QComboBox(); self.language_combo.addItem("Русский", "ru"); self.language_combo.addItem("Английский", "en")
+        self.language_combo.setCurrentIndex(0 if self.language == "ru" else 1)
+        pl.addWidget(self.language_combo)
+        self.animations_check = QCheckBox("Плавные анимации интерфейса")
+        self.animations_check.setChecked(self.animations_enabled); pl.addWidget(self.animations_check)
+        pref_save = QPushButton("Сохранить настройки"); pref_save.setObjectName("Primary")
+        pref_save.clicked.connect(self.save_preferences); pl.addWidget(pref_save)
+        lay.addWidget(prefs)
+
         card = QFrame()
         card.setObjectName("Card")
         cl = QVBoxLayout(card)
-        cl.addWidget(QLabel("API-ключ 2ГИС (Catalog / Places)"))
+        cl.setContentsMargins(18, 16, 18, 16)
+        cl.addWidget(QLabel("API-ключ 2ГИС (необязательно)"))
         self.key_input = QLineEdit()
         self.key_input.setEchoMode(QLineEdit.Password)
         self.key_input.setPlaceholderText("Вставьте ключ…")
@@ -735,6 +913,58 @@ class MainWindow(QMainWindow):
         lay.addWidget(db_info)
         lay.addStretch()
         return w
+
+    def save_preferences(self) -> None:
+        self.language = self.language_combo.currentData()
+        save_language(self.language)
+        self.animations_enabled = self.animations_check.isChecked()
+        save_animations_enabled(self.animations_enabled)
+        self.apply_language(self.language)
+        QMessageBox.information(self, "Настройки", "Настройки сохранены." if self.language == "ru" else "Settings saved.")
+
+    def apply_language(self, language: str) -> None:
+        """Apply UI language without restarting the app; data values remain untouched."""
+        mapping = ({**TRANSLATIONS, **{v: k for k, v in EN_TRANSLATIONS.items()}} if language == "ru" else {**TRANSLATIONS, **EN_TRANSLATIONS})
+        for widget in self.findChildren(QLabel):
+            value = widget.text()
+            if value in mapping:
+                widget.setText(mapping[value])
+        for widget in self.findChildren(QPushButton):
+            value = widget.text()
+            if value in mapping:
+                widget.setText(mapping[value])
+        for widget in self.findChildren(QCheckBox):
+            value = widget.text()
+            if value in mapping:
+                widget.setText(mapping[value])
+        for widget in self.findChildren(QLineEdit):
+            value = widget.placeholderText()
+            if value in mapping:
+                widget.setPlaceholderText(mapping[value])
+        for widget in self.findChildren(QTextEdit):
+            value = widget.placeholderText()
+            if value in mapping:
+                widget.setPlaceholderText(mapping[value])
+        for widget in self.findChildren(QComboBox):
+            for index in range(widget.count()):
+                value = widget.itemText(index)
+                if value in mapping:
+                    widget.setItemText(index, mapping[value])
+        for table in self.findChildren(QTableWidget):
+            for column in range(table.columnCount()):
+                item = table.horizontalHeaderItem(column)
+                if item and item.text() in mapping:
+                    item.setText(mapping[item.text()])
+        # Navigation is rebuilt from stable keys to avoid translating dynamic data.
+        nav = {
+            "dashboard": ("Обзор", "Overview"), "search": ("Поиск", "Search"),
+            "leads": ("Компании", "Companies"), "audit": ("Аудит сайтов", "Website audit"),
+            "categories": ("Ниши", "Niches"), "history": ("История", "History"),
+            "settings": ("Настройки", "Settings"),
+        }
+        for key, button in self.nav_buttons.items():
+            button.setText(nav[key][0 if language == "ru" else 1])
+        self.setWindowTitle("Neo Parser 2.1 — Lead Intelligence")
 
     def save_settings(self) -> None:
         key = self.key_input.text().strip()
@@ -784,7 +1014,7 @@ def _icon_path() -> Path | None:
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Neo Parser")
-    app.setApplicationDisplayName("Neo Parser 2.0")
+    app.setApplicationDisplayName("Neo Parser 2.1")
     app.setOrganizationName("CEO Neki")
     app.setStyle("Fusion")
     app.setStyleSheet(DARK_STYLE)
