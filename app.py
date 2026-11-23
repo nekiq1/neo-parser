@@ -1,5 +1,5 @@
-"""Neo parser вЂ” Р»РѕРєР°Р»СЊРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ (Flask + СЃРѕР±СЃС‚РІРµРЅРЅРѕРµ РѕРєРЅРѕ / Р±СЂР°СѓР·РµСЂ). 
-Р—Р°РїСѓСЃРє: python app.py"""
+"""Neo parser — локальное приложение (Flask + собственное окно / браузер). 
+Запуск: python app.py"""
 
 import json
 import os
@@ -9,23 +9,23 @@ import time
 import webbrowser
 from datetime import datetime
 
-# --- РќРђР§РђР›Рћ Р‘Р›РћРљРђ Р”Р›РЇ PYINSTALLER (РљР РРўРР§РќРћ Р”Р›РЇ РЎР‘РћР РљР) ---
+# --- БЛОК ДЛЯ PYINSTALLER (ИСПРАВЛЯЕТ ОШИБКИ МОДУЛЕЙ И БРАУЗЕРА) ---
 if getattr(sys, 'frozen', False):
     base_path = sys._MEIPASS
-    # РЈРєР°Р·С‹РІР°РµРј Playwright, РіРґРµ Р»РµР¶Р°С‚ СѓРїР°РєРѕРІР°РЅРЅС‹Рµ Р±СЂР°СѓР·РµСЂС‹
+    # Указываем Playwright, где лежат упакованные браузеры
     playwright_path = os.path.join(base_path, 'playwright', 'driver', 'package', '.local-browsers')
     os.environ['PLAYWRIGHT_BROWSERS_PATH'] = playwright_path
-    # Р”Р»СЏ РєРѕСЂСЂРµРєС‚РЅРѕР№ СЂР°Р±РѕС‚С‹ pywebview РЅР° Windows
+    # Для корректной работы pywebview на Windows
     if sys.platform == 'win32':
         os.environ['WEBVIEW2_USER_DATA_FOLDER'] = os.path.join(os.path.expanduser('~'), '.neo_parser_webview')
-# --- РљРћРќР•Р¦ Р‘Р›РћРљРђ Р”Р›РЇ PYINSTALLER ---
+# ------------------------------------------------------------------
 
 from flask import Flask, jsonify, request, send_from_directory, send_file, abort, Response
 from core import config, filters as F, export, mockups, outreach, ai
 from core.yandex import YandexParser, StopRequested, CaptchaError, split_list
 
 if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w")  # СЃР±РѕСЂРєР° Р±РµР· РєРѕРЅСЃРѕР»Рё
+    sys.stdout = open(os.devnull, "w")  # сборка без консоли
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w")
 
@@ -71,22 +71,22 @@ except (OSError, ValueError, KeyError):
 
 def _run_job(cities, rubrics, settings):
     try:
-        JOB.log(f"РЎС‚Р°СЂС‚: РіРѕСЂРѕРґР°={cities}, СЂСѓР±СЂРёРєРё={rubrics}, Р»РёРјРёС‚ РЅР° РїР°СЂСѓ={settings['max_results'] or 'в€ћ'}")
+        JOB.log(f"Старт: города={cities}, рубрики={rubrics}, лимит на пару={settings['max_results'] or '∞'}")
         YandexParser(settings, JOB.log, lambda n: None, lambda: JOB.stop_flag, JOB.add).run(cities, rubrics, POP)
-        JOB.log("РЎР±РѕСЂ Р·Р°РІРµСЂС€С‘РЅ.")
+        JOB.log("Сбор завершён.")
     except StopRequested:
-        JOB.log("РћСЃС‚Р°РЅРѕРІР»РµРЅРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј.")
+        JOB.log("Остановлено пользователем.")
     except CaptchaError as e:
         JOB.error = str(e)
         JOB.log(JOB.error)
     except Exception as e:
         msg = str(e)
         if "Executable doesn't exist" in msg or "playwright install" in msg:
-            msg = "Chromium РЅРµ РЅР°Р№РґРµРЅ. РќР°Р¶РјРёС‚Рµ В«РџСЂРѕРІРµСЂРёС‚СЊ Р±СЂР°СѓР·РµСЂВ» РёР»Рё РІС‹РїРѕР»РЅРёС‚Рµ: python -m playwright install chromium"
+            msg = "Chromium не найден. Нажмите «Проверить браузер» или выполните: python -m playwright install chromium"
         elif "net::ERR" in msg:
-            msg = "РЎРµС‚РµРІР°СЏ РѕС€РёР±РєР°: РїСЂРѕРІРµСЂСЊС‚Рµ РёРЅС‚РµСЂРЅРµС‚-СЃРѕРµРґРёРЅРµРЅРёРµ."
+            msg = "Сетевая ошибка: проверьте интернет-соединение."
         JOB.error = msg[:300]
-        JOB.log("РћС€РёР±РєР°: " + JOB.error)
+        JOB.log("Ошибка: " + JOB.error)
     finally:
         with JOB.lock:
             JOB.running = False
@@ -94,12 +94,12 @@ def _run_job(cities, rubrics, settings):
             try:
                 p = export.save_xlsx(JOB.records, config.DB_DIR, "leads_" + JOB.title)
                 JOB.last_file, JOB.base = p.name, p.name
-                JOB.log(f"РЎРѕС…СЂР°РЅРµРЅРѕ: databases/{p.name} ({len(JOB.records)} РѕСЂРі.)")
+                JOB.log(f"Сохранено: databases/{p.name} ({len(JOB.records)} орг.)")
             except Exception as e:
-                JOB.log(f"РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ XLSX: {e}")
+                JOB.log(f"Не удалось сохранить XLSX: {e}")
 
 
-# ---------------- СЃС‚СЂР°РЅРёС†С‹ Рё СЃРїСЂР°РІРѕС‡РЅРёРєРё ----------------
+# ---------------- страницы и справочники ----------------
 @app.get("/")
 def index():
     return send_from_directory(config.STATIC, "index.html")
@@ -117,22 +117,22 @@ def settings():
     return jsonify(config.public_settings())
 
 
-# ---------------- СЃР±РѕСЂ ----------------
+# ---------------- сбор ----------------
 @app.post("/api/start")
 def start():
     data = request.get_json(silent=True) or {}
     cities_, rubrics = split_list(data.get("cities")), split_list(data.get("rubrics"))
     if not cities_ or not rubrics:
-        return jsonify(error="РЈРєР°Р¶РёС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РіРѕСЂРѕРґ Рё РѕРґРЅСѓ СЂСѓР±СЂРёРєСѓ."), 400
+        return jsonify(error="Укажите хотя бы один город и одну рубрику."), 400
     with JOB.lock:
         if JOB.running:
-            return jsonify(error="РџР°СЂСЃРµСЂ СѓР¶Рµ Р·Р°РїСѓС‰РµРЅ."), 409
+            return jsonify(error="Парсер уже запущен."), 409
         JOB.reset()
         JOB.running = True
         JOB.title = f"{cities_[0]}_{rubrics[0]}".lower().replace(" ", "_")
         s = config.load_settings()
         if data.get("limit") not in (None, ""):
-            # Р»РёРјРёС‚ СЃ С„РѕСЂРјС‹ вЂ” РЅР° РєР°Р¶РґСѓСЋ РїР°СЂСѓ РіРѕСЂРѕРґ/СЂСѓР±СЂРёРєР°
+            # лимит с формы — на каждую пару город/рубрика
             try:
                 s["max_results"] = max(0, int(data["limit"]))
             except (TypeError, ValueError):
@@ -144,7 +144,7 @@ def start():
 @app.post("/api/stop")
 def stop():
     JOB.stop_flag = True
-    JOB.log("Р—Р°РїСЂРѕС€РµРЅР° РѕСЃС‚Р°РЅРѕРІРєР°вЂ¦")
+    JOB.log("Запрошена остановка…")
     return jsonify(ok=True)
 
 
@@ -171,12 +171,12 @@ def status():
 def export_now():
     _, out = _filtered(request.args)
     if not out:
-        return jsonify(error="РќРµС‚ РґР°РЅРЅС‹С… РґР»СЏ СЌРєСЃРїРѕСЂС‚Р°."), 400
+        return jsonify(error="Нет данных для экспорта."), 400
     p = export.save_xlsx(out, config.DB_DIR, f"{JOB.title}_{request.args.get('tab', 'all')}")
     return send_file(p, as_attachment=True, download_name=p.name)
 
 
-# ---------------- Р¶СѓСЂРЅР°Р» ----------------
+# ---------------- журнал ----------------
 @app.get("/api/logs")
 def logs():
     return jsonify(lines=JOB.logs[-300:])
@@ -196,7 +196,7 @@ def logs_file():
     return send_file(config.LOG_FILE, as_attachment=True, download_name="neo.log")
 
 
-# ---------------- Р±Р°Р·С‹ ----------------
+# ---------------- базы ----------------
 _cache = {}
 
 
@@ -249,7 +249,7 @@ def open_base(name):
     p = _safe_base(name)
     with JOB.lock:
         if JOB.running:
-            return jsonify(error="Р”РѕР¶РґРёС‚РµСЃСЊ РѕРєРѕРЅС‡Р°РЅРёСЏ СЃР±РѕСЂР°."), 409
+            return jsonify(error="Дождитесь окончания сбора."), 409
         JOB.records, JOB.title, JOB.base = export.load_base(p), p.stem, p.name
     return jsonify(ok=True, count=len(JOB.records))
 
@@ -258,7 +258,6 @@ def open_base(name):
 def delete_base(name):
     p = _safe_base(name)
     p.unlink()
-    # Drop all cached metadata for the deleted file.
     resolved = str(p.resolve())
     for key in list(_cache):
         if key[0] == resolved:
@@ -266,13 +265,13 @@ def delete_base(name):
     return jsonify(ok=True)
 
 
-# ---------------- РјР°РєРµС‚С‹ ----------------
+# ---------------- макеты ----------------
 @app.post("/api/mockups/generate")
 def mockups_generate():
     d = request.get_json(silent=True) or {}
     p = _safe_base(d.get("base", ""))
     res = mockups.generate(export.load_base(p), config.SITES_DIR, p.stem, bool(d.get("overwrite")))
-    JOB.log(f"РњР°РєРµС‚С‹: СЃРѕР·РґР°РЅРѕ {res['made']}, РїСЂРѕРїСѓС‰РµРЅРѕ {res['skipped']} в†’ {res['folder']}")
+    JOB.log(f"Макеты: создано {res['made']}, пропущено {res['skipped']} → {res['folder']}")
     return jsonify(res)
 
 
@@ -280,7 +279,7 @@ def mockups_generate():
 def mockups_zip():
     p = _safe_base(request.args.get("base", ""))
     if not mockups.count(config.SITES_DIR, p.stem):
-        return jsonify(error="Р”Р»СЏ СЌС‚РѕР№ Р±Р°Р·С‹ РµС‰С‘ РЅРµС‚ РјР°РєРµС‚РѕРІ."), 400
+        return jsonify(error="Для этой базы ещё нет макетов."), 400
     return Response(
         mockups.zip_folder(config.SITES_DIR, p.stem),
         mimetype="application/zip",
@@ -288,7 +287,7 @@ def mockups_zip():
     )
 
 
-# ---------------- СЂР°СЃСЃС‹Р»РєР° (СЂСѓС‡РЅР°СЏ) Рё AI ----------------
+# ---------------- рассылка (ручная) и AI ----------------
 @app.get("/api/outreach")
 def outreach_list():
     p = _safe_base(request.args.get("base", ""))
@@ -311,7 +310,7 @@ def outreach_mark():
 def ai_ask():
     prompt = (request.get_json(silent=True) or {}).get("prompt", "").strip()
     if not prompt:
-        return jsonify(error="РџСѓСЃС‚РѕР№ Р·Р°РїСЂРѕСЃ."), 400
+        return jsonify(error="Пустой запрос."), 400
     try:
         return jsonify(text=ai.ask(config.load_settings(), prompt))
     except Exception as e:
@@ -339,7 +338,7 @@ def main(port=5057):
     threading.Thread(target=lambda: app.run(host="127.0.0.1", port=port, threaded=True), daemon=True).start()
     time.sleep(0.8)
     try:
-        # СЃРѕР±СЃС‚РІРµРЅРЅРѕРµ РѕРєРЅРѕ (WebView2), РёРЅР°С‡Рµ вЂ” РѕР±С‹С‡РЅС‹Р№ Р±СЂР°СѓР·РµСЂ
+        # собственное окно (WebView2), иначе — обычный браузер
         import webview
         webview.create_window("Neo parser", url, width=1280, height=860, min_size=(960, 640))
         webview.start()
@@ -351,8 +350,7 @@ def main(port=5057):
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
-        # CI Р·Р°РїСѓСЃРєР°РµС‚ СЃРѕР±СЂР°РЅРЅС‹Р№ EXE СЃ СЌС‚РёРј С„Р»Р°РіРѕРј: РїСЂРѕРІРµСЂСЏРµРј Р·Р°РіСЂСѓР·РєСѓ Python DLL
-        # Рё РІСЃРµС… РѕР±СЏР·Р°С‚РµР»СЊРЅС‹С… РёРјРїРѕСЂС‚РѕРІ РґРѕ РїСѓР±Р»РёРєР°С†РёРё portable-Р°СЂС…РёРІР°.
+        # CI запускает собранный EXE с этим флагом: проверяем загрузку Python DLL
         config.ensure_dirs()
         raise SystemExit(0)
     main()
