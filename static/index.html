@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neo parser</title>
+<style>
+:root{--bg:#07070d;--bg2:#0d0d17;--card:#10101c;--ln:#24243a;--tx:#e9ecff;--mut:#8087a8;--c:#00e5ff;--m:#ff2bd6;--ok:#38f9a0;--er:#ff4d6d;
+--glow:0 0 18px rgba(0,229,255,.35);--grad:linear-gradient(90deg,var(--c),var(--m))}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;font:14px/1.5 "Segoe UI",system-ui,sans-serif;background:radial-gradient(900px 500px at 85% -10%,rgba(255,43,214,.10),transparent),radial-gradient(700px 500px at 0 0,rgba(0,229,255,.08),transparent),var(--bg);color:var(--tx);display:flex;flex-direction:column;overflow:hidden}
+.app{flex:1;display:flex;min-height:0}
+nav{width:230px;background:rgba(13,13,23,.9);border-right:1px solid var(--ln);padding:18px 12px;display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:10px;margin:0 6px 18px}.logo i{width:38px;height:38px;border-radius:11px;background:var(--grad);display:grid;place-items:center;font:800 20px system-ui;color:#07070d;box-shadow:var(--glow);font-style:normal}
+.logo b{font-size:17px;letter-spacing:.5px}.logo small{display:block;color:var(--mut);font-size:11px}
+nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;color:var(--mut);padding:10px 12px;border-radius:10px;cursor:pointer;font:inherit;position:relative;transition:.15s}
+nav button:hover{color:var(--tx);background:#14142a}
+nav button.on{color:var(--tx);background:linear-gradient(90deg,rgba(0,229,255,.14),rgba(255,43,214,.05));box-shadow:inset 0 0 0 1px rgba(0,229,255,.25)}
+nav button.on:before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--grad);box-shadow:var(--glow)}
+nav .sp{flex:1}.upd{border:1px solid var(--ln);border-radius:12px;padding:12px;font-size:12px;color:var(--mut)}.upd b{color:var(--tx)}
+main{flex:1;min-width:0;overflow:auto;padding:0 28px 28px}
+header.top{position:sticky;top:0;z-index:4;padding:20px 0 14px;background:linear-gradient(var(--bg) 70%,transparent);display:flex;align-items:center;gap:12px}
+header.top h1{margin:0;font-size:22px}header.top p{margin:0;color:var(--mut);font-size:13px}.badge{margin-left:auto;font-size:11px;padding:4px 10px;border-radius:99px;border:1px solid rgba(0,229,255,.4);color:var(--c);box-shadow:var(--glow)}
+section{display:none}section.on{display:block}
+.card{background:linear-gradient(180deg,#12121f,var(--card));border:1px solid var(--ln);border-radius:16px;padding:18px;margin-bottom:16px}
+.card h2{margin:0 0 4px;font-size:16px}.card .sub{color:var(--mut);margin:0 0 14px;font-size:13px}
+.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(4,1fr)}.g2{grid-template-columns:1fr 1fr}.gm{grid-template-columns:1fr 320px}
+.stat{border:1px solid var(--ln);border-radius:14px;padding:16px;background:var(--bg2)}.stat span{color:var(--mut);font-size:12px}.stat b{display:block;font-size:30px;margin-top:4px;background:var(--grad);-webkit-background-clip:text;color:transparent}
+label.l{display:block;font-size:12px;color:var(--mut);margin:12px 0 5px}
+input[type=text],input[type=number],input[type=password],textarea,select{width:100%;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--bg2);color:var(--tx);font:inherit;outline:0;transition:.15s}
+input:focus,textarea:focus,select:focus{border-color:var(--c);box-shadow:var(--glow)}textarea{min-height:70px;resize:vertical}
+.chk{display:inline-flex;align-items:center;gap:7px;margin:5px 16px 5px 0;cursor:pointer;color:var(--tx)}.chk input{accent-color:var(--c);width:16px;height:16px}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0}.chip{padding:4px 11px;border:1px solid var(--ln);border-radius:9px;cursor:pointer;font-size:12px;background:var(--bg2);color:var(--mut);transition:.15s}
+.chip:hover{border-color:var(--c);color:var(--c);box-shadow:var(--glow)}
+.btn{border:0;border-radius:10px;padding:10px 18px;font:600 14px inherit;cursor:pointer;color:#07070d;background:var(--grad);box-shadow:0 0 20px rgba(255,43,214,.3);transition:.15s}
+.btn:hover{filter:brightness(1.1);box-shadow:0 0 26px rgba(0,229,255,.5)}.btn.w{background:#e9ecff;box-shadow:none}
+.ghost{border:1px solid var(--ln);background:var(--bg2);color:var(--tx);border-radius:10px;padding:9px 14px;font:inherit;cursor:pointer;transition:.15s}.ghost:hover{border-color:var(--c);color:var(--c)}
+button:disabled{opacity:.4;cursor:not-allowed;filter:none;box-shadow:none}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.mut{color:var(--mut);font-size:12px}.err{color:var(--er);margin:8px 0}.ok{color:var(--ok)}
+.sug{position:relative}.sug ul{position:absolute;z-index:6;left:0;right:0;background:#14142a;border:1px solid var(--c);border-radius:10px;margin:3px 0 0;padding:4px;list-style:none;max-height:240px;overflow:auto;display:none;box-shadow:var(--glow)}
+.sug li{padding:7px 10px;border-radius:7px;cursor:pointer}.sug li:hover{background:#1d1d3a}.sug small{color:var(--mut)}
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:6px 0 12px}.tab{padding:7px 14px;border:1px solid var(--ln);border-radius:99px;cursor:pointer;background:var(--bg2);color:var(--mut)}
+.tab.on{color:#07070d;background:var(--grad);border-color:transparent;box-shadow:var(--glow)}.tab b{margin-left:6px;opacity:.8}
+.tw{overflow:auto;border:1px solid var(--ln);border-radius:12px;max-height:420px}table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 12px;border-bottom:1px solid var(--ln);text-align:left;vertical-align:top;white-space:nowrap}th{background:#14142a;position:sticky;top:0;color:var(--mut);font-weight:600}td.w{white-space:normal;min-width:190px}
+a{color:var(--c);text-decoration:none}a:hover{text-decoration:underline}
+.base{border:1px solid var(--ln);border-radius:14px;padding:14px;margin-bottom:12px;background:var(--bg2);transition:.15s}.base:hover{border-color:rgba(0,229,255,.5);box-shadow:var(--glow)}
+.base h3{margin:0;font-size:14px;word-break:break-all}.pill{display:inline-block;margin:8px 8px 0 0;padding:3px 10px;border:1px solid var(--ln);border-radius:8px;font-size:12px;color:var(--mut)}.pill b{color:var(--tx)}
+.new{font-size:10px;background:var(--m);color:#fff;border-radius:5px;padding:2px 6px;margin-left:8px;vertical-align:middle;box-shadow:0 0 12px var(--m)}
+.logbar{height:38px;border-top:1px solid var(--ln);background:var(--bg2);display:flex;align-items:center;gap:14px;padding:0 18px;font:12px Consolas,monospace;color:var(--mut)}
+.logbar .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}.logbar .dot.run{background:var(--c);box-shadow:0 0 12px var(--c);animation:p 1s infinite}
+.logbar .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.logbar a{cursor:pointer;color:var(--mut)}.logbar a:hover{color:var(--c)}
+@keyframes p{50%{opacity:.3}}
+#drawer{position:fixed;left:230px;right:0;bottom:38px;height:46vh;background:#090912;border-top:1px solid var(--c);box-shadow:0 -8px 30px rgba(0,229,255,.15);display:none;flex-direction:column;z-index:9}
+#drawer.on{display:flex}#drawer .h{padding:10px 16px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--ln)}#drawer pre{flex:1;margin:0;padding:12px 16px;overflow:auto;font:12px/1.6 Consolas,monospace;color:#b9c0e8;white-space:pre-wrap}
+.help{display:grid;grid-template-columns:220px 1fr;gap:16px}.help .toc button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--mut);padding:9px 12px;border-radius:9px;cursor:pointer;font:inherit}
+.help .toc button.on{background:#14142a;color:var(--tx)}.topic{display:none}.topic.on{display:block}.topic h3{font-size:20px;margin:0 0 10px}.topic li{margin:7px 0}
+code{background:#1a1a30;padding:1px 6px;border-radius:5px;color:var(--c)}
+.out{white-space:pre-wrap;background:var(--bg2);border:1px solid var(--ln);border-radius:10px;padding:12px;margin-top:10px;min-height:48px}
+@media(max-width:900px){.g4,.g2,.gm,.help{grid-template-columns:1fr}nav{width:64px}nav button span,.logo div,.upd{display:none}#drawer{left:64px}}
+</style>
+</head>
+<body>
+<div class="app">
+<nav>
+  <div class="logo"><i>N</i><div><b>Neo parser</b><small>NEON · 1.1</small></div></div>
+  <button data-s="bases" class="on">▦ <span>Базы данных</span></button>
+  <button data-s="maps">⌕ <span>Яндекс Карты</span></button>
+  <button data-s="sites">‹› <span>Макеты сайтов</span></button>
+  <button data-s="tg">➤ <span>Рассылка</span></button>
+  <button data-s="ai">✦ <span>AI-ассистент</span></button>
+  <button data-s="settings">⚙ <span>Настройки</span></button>
+  <button data-s="help">? <span>Инструкция</span></button>
+  <div class="sp"></div>
+  <div class="upd"><b>Локальное приложение</b><br>Данные хранятся только на вашем ПК.</div>
+</nav>
+<main>
+<header class="top"><div><h1 id="ttl">Базы данных</h1><p id="sub">Компании, контакты и результаты работы</p></div><span class="badge">NEO</span></header>
+
+<!-- БАЗЫ -->
+<section id="bases" class="on">
+  <div class="grid g4" id="stats" style="margin-bottom:16px"></div>
+  <div class="card"><div class="bar"><div><h2>Сохранённые базы</h2><p class="sub" style="margin:0">Контакты, фильтры и действия с компаниями</p></div>
+    <input type="text" id="bsearch" placeholder="Поиск по файлам…" style="width:200px;margin-left:auto"><button class="ghost" id="brefresh">⟳ Обновить</button><button class="btn w" id="bnew">+ Новая база</button></div>
+    <div id="blist" style="margin-top:14px"></div></div>
+</section>
+
+<!-- ЯНДЕКС КАРТЫ -->
+<section id="maps">
+ <div class="grid gm">
+  <div>
+   <div class="card"><h2>Сбор контактов из Яндекс Карт</h2><p class="sub">Города и рубрики можно указать через запятую.</p>
+    <label class="l">Города-миллионники · нажмите, чтобы добавить</label><div class="chips" id="mil"></div>
+    <label class="l">Город</label><div class="sug"><div class="bar" style="flex-wrap:nowrap"><input type="text" id="cities" placeholder="Выберите город или начните вводить" autocomplete="off"><button class="ghost" id="cdrop">⌄</button></div><ul id="sug"></ul></div>
+    <div class="mut" id="ccount"></div>
+    <label class="l">Рубрика</label><input type="text" id="rubrics" placeholder="Детейлинг, автосервис, баня">
+    <div class="chips"><span class="mut" style="align-self:center">Примеры:</span><span class="chip ex">Детейлинг</span><span class="chip ex">Красота</span><span class="chip ex">Ремонт</span><span class="chip ex">Барбершоп</span></div>
+    <label class="l">Лимит карточек на каждый поиск</label><input type="number" id="limit" min="0" value="30"><div class="mut">0 — собрать все доступные. Лимит применяется к каждой паре город / рубрика.</div>
+   </div>
+   <div class="card"><h2>Фильтры <span class="new">NEW</span></h2><p class="sub">Применяются к таблице результатов и выгрузке.</p>
+    <label class="chk"><input type="checkbox" id="f_no_site"> Без сайта</label><label class="chk"><input type="checkbox" id="f_has_site"> Только с сайтом</label>
+    <label class="chk"><input type="checkbox" id="f_has_phone"> Есть телефон</label><label class="chk"><input type="checkbox" id="f_has_email"> Есть email</label>
+    <label class="l">Мессенджеры и соцсети — искать отдельно</label>
+    <label class="chk"><input type="checkbox" id="f_vk"> ВКонтакте</label><label class="chk"><input type="checkbox" id="f_tg"> Telegram</label><label class="chk"><input type="checkbox" id="f_wa"> WhatsApp</label>
+    <select id="f_mode" style="width:auto"><option value="any">любой из выбранных</option><option value="all">все выбранные</option></select>
+    <div><label class="chk"><input type="checkbox" id="f_only_no_msg"> Без мессенджеров (для обзвона)</label></div>
+    <label class="l">Минимальный рейтинг</label><input type="number" id="f_rating" min="0" max="5" step="0.1" value="0" style="max-width:140px">
+   </div>
+   <div class="bar" style="margin-bottom:12px"><button class="btn" id="start">▶ Начать сбор</button><button class="ghost" id="stop" disabled>■ Остановить</button><span class="mut" id="state"></span></div>
+   <div class="err" id="err"></div>
+  </div>
+  <div><div class="card"><h2>Браузер парсера</h2><p class="sub" id="bstat">Проверьте, что Chromium запускается.</p>
+    <button class="ghost" id="bcheck">Проверить браузер</button>
+    <p class="mut" style="margin-top:14px">Если Яндекс покажет капчу, пройдите её в открывшемся окне. Для этого фоновый режим должен быть выключен.</p></div></div>
+ </div>
+ <div class="card"><div class="tabs" id="tabs"></div>
+  <div class="bar" style="margin-bottom:10px"><span class="mut" id="shown"></span><button class="ghost" id="export" style="margin-left:auto">⭳ Скачать XLSX</button></div>
+  <div class="tw"><table><thead><tr><th>Название</th><th>Адрес</th><th>Телефоны</th><th>Сайт</th><th>VK</th><th>Telegram</th><th>WhatsApp</th><th>Email</th><th>★</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+</section>
+
+<!-- МАКЕТЫ -->
+<section id="sites">
+ <div class="grid g2">
+  <div class="card"><h2>Генерация макетов сайтов</h2><p class="sub">Шаблонные неоновые макеты по данным компании — без нейросети, на каждую компанию свой HTML.</p>
+   <label class="l">База данных</label><select id="m_base"></select>
+   <label class="chk" style="margin-top:12px"><input type="checkbox" id="m_over"> Перезаписать уже созданные макеты</label>
+   <div style="margin-top:10px"><button class="btn" id="m_go" style="width:100%">Сгенерировать сайты</button></div><div class="mut" id="m_msg" style="margin-top:10px"></div></div>
+  <div class="card"><h2>Экспорт макетов</h2><p class="sub">Скачайте ZIP с готовыми HTML для ручной доработки (папка <code>websites</code> рядом с программой).</p>
+   <label class="l">База данных</label><select id="m_base2"></select>
+   <div style="margin-top:12px"><button class="ghost" id="m_zip" style="width:100%">⭳ Скачать ZIP с макетами</button></div></div>
+ </div>
+</section>
+
+<!-- РАССЫЛКА -->
+<section id="tg">
+ <div class="card"><h2>Ручная рассылка по каналам</h2><p class="sub">Готовые ссылки на чат с подстановкой текста. Автоматической массовой отправки нет — это защищает ваши аккаунты от блокировок. <code>{name}</code> и <code>{city}</code> подставятся сами.</p>
+  <div class="grid g2"><div><label class="l">База данных</label><select id="o_base"></select></div>
+  <div><label class="l">Канал</label><select id="o_ch"><option value="tg">Telegram</option><option value="wa">WhatsApp</option><option value="vk">ВКонтакте</option></select></div></div>
+  <label class="l">Текст сообщения</label><textarea id="o_tpl"></textarea>
+  <div class="bar" style="margin-top:10px"><button class="ghost" id="o_ai">✦ Сгенерировать текст (AI)</button><button class="btn" id="o_load">Показать контакты</button><span class="mut" id="o_msg"></span></div></div>
+ <div class="card"><div id="o_list"></div></div>
+</section>
+
+<!-- AI -->
+<section id="ai"><div class="card"><h2>AI-ассистент</h2><p class="sub">Подбор ниш, тексты предложений, идеи — через DeepSeek или Gemini (ключ в Настройках).</p>
+  <textarea id="ai_q" placeholder="Например: предложи 15 ниш в Казани, где часто нет сайта и есть спрос на услуги"></textarea>
+  <div class="bar" style="margin-top:10px"><button class="btn" id="ai_go">Спросить</button><span class="mut" id="ai_msg"></span></div><div class="out" id="ai_out"></div></div></section>
+
+<!-- НАСТРОЙКИ -->
+<section id="settings"><div class="grid g2">
+ <div class="card"><h2>Парсер</h2><p class="sub">Сохраняются по кнопке; значения проверяются.</p>
+  <label class="chk"><input type="checkbox" id="s_headless"> Фоновый режим (без окна; капчу пройти нельзя)</label><br>
+  <label class="chk"><input type="checkbox" id="s_deep"> Глубокий поиск контактов на сайтах</label><br>
+  <label class="chk"><input type="checkbox" id="s_geo"> Расширять поиск по районам (города 500k+)</label>
+  <div class="grid g2"><div><label class="l">Параллельных обработчиков (1–8)</label><input type="number" id="s_par" min="1" max="8"></div>
+  <div><label class="l">Лимит на пару (0 — без лимита)</label><input type="number" id="s_max" min="0"></div></div></div>
+ <div class="card"><h2>AI</h2><p class="sub">Ключи хранятся только в settings.json на вашем ПК.</p>
+  <label class="l">Провайдер</label><select id="s_prov"><option>DeepSeek</option><option>Gemini</option></select>
+  <label class="l">DeepSeek API key <span class="mut" id="k1"></span></label><input type="password" id="s_dk" placeholder="оставьте пустым, чтобы не менять">
+  <label class="l">Gemini API key <span class="mut" id="k2"></span></label><input type="password" id="s_gk" placeholder="оставьте пустым, чтобы не менять"></div>
+ </div><div class="bar"><button class="btn" id="s_save">Сохранить</button><span class="mut" id="s_msg"></span></div></section>
+
+<!-- ИНСТРУКЦИЯ -->
+<section id="help"><div class="card"><label class="l" style="margin-top:0">Найти в инструкции</label><input type="text" id="h_q" placeholder="Например: капча, Excel, WhatsApp"></div>
+ <div class="help"><div class="card toc" id="toc"></div><div class="card" id="topics"></div></div></section>
+</main></div>
+
+<div id="drawer"><div class="h"><b>Журнал</b><span class="mut">последние 300 записей</span><a class="ghost" href="/api/logs/file" style="margin-left:auto">⭳ Файл neo.log</a><button class="ghost" id="dclose">Закрыть</button></div><pre id="dlog"></pre></div>
+<div class="logbar"><span class="dot" id="dot"></span><span>ЛОГИ</span><span class="t" id="ltail">Готов к работе.</span><a id="lopen">Открыть журнал</a><a id="lclear">Очистить</a></div>
+
+<script>
+const $=id=>document.getElementById(id),Q=s=>document.querySelectorAll(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api=async(u,o)=>{const r=await fetch(u,o);let j={};try{j=await r.json()}catch(e){}return{ok:r.ok,j}};
+const post=(u,b)=>api(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})});
+const T={bases:["Базы данных","Компании, контакты и результаты работы"],maps:["Яндекс Карты","Сбор компаний по городам и рубрикам"],sites:["Макеты сайтов","Создание макетов по данным компании"],tg:["Рассылка","Ручная отправка по Telegram, WhatsApp и ВК"],ai:["AI-ассистент","Идеи, ниши и тексты"],settings:["Настройки","Парсер и AI"],help:["Инструкция","Как пользоваться Neo parser"]};
+function go(s){Q("nav button,section").forEach(e=>e.classList.remove("on"));document.querySelector(`nav button[data-s=${s}]`).classList.add("on");$(s).classList.add("on");
+  $("ttl").textContent=T[s][0];$("sub").textContent=T[s][1];if(s==="bases")loadBases();if(s==="settings")loadSettings();if(["sites","tg"].includes(s))fillBases();}
+Q("nav button").forEach(b=>b.onclick=()=>go(b.dataset.s));
+/* ---------- журнал ---------- */
+async function tail(){const{j}=await api("/api/status?tab=all&filters={}");$("ltail").textContent=(j.tail&&j.tail[0])||"Готов к работе.";$("dot").className="dot"+(j.running?" run":"");if($("drawer").classList.contains("on"))dlog();}
+async function dlog(){const{j}=await api("/api/logs");const p=$("dlog");p.textContent=j.lines.join("\n")||"Журнал пуст.";p.scrollTop=1e9;}
+$("lopen").onclick=()=>{$("drawer").classList.toggle("on");dlog();};$("dclose").onclick=()=>$("drawer").classList.remove("on");
+$("lclear").onclick=async()=>{await post("/api/logs/clear");$("ltail").textContent="Журнал очищен.";dlog();};setInterval(tail,2000);
+/* ---------- базы ---------- */
+let bases=[];
+async function loadBases(){const{j}=await api("/api/overview");bases=j.bases||[];const t=j.totals||{};
+  $("stats").innerHTML=[["Базы данных",t.bases],["Всего организаций",t.orgs],["Готово макетов",t.mockups],["Отмечено отправленных",t.sent]].map(([n,v])=>`<div class="stat"><span>${n}</span><b>${v??0}</b></div>`).join("");renderBases();}
+function renderBases(){const q=$("bsearch").value.toLowerCase(),l=bases.filter(b=>b.name.toLowerCase().includes(q));
+  $("blist").innerHTML=l.length?l.map(b=>`<div class="base"><div class="bar"><h3>${esc(b.name)}</h3><span class="mut">${esc(b.modified)}</span>
+   <span style="margin-left:auto" class="bar"><button class="btn w" data-a="open" data-n="${esc(b.name)}">Открыть базу</button><button class="ghost" data-a="sites" data-n="${esc(b.name)}">Макеты</button><button class="ghost" data-a="tg" data-n="${esc(b.name)}">Рассылка</button><button class="ghost" data-a="del" data-n="${esc(b.name)}" title="Удалить">✕</button></span></div>
+   <span class="pill"><b>${b.count}</b> контактов</span><span class="pill">✓ <b>${b.ready}</b> готовы</span><span class="pill"><b>${b.no_site}</b> без сайта</span><span class="pill">VK <b>${b.vk}</b></span><span class="pill">TG <b>${b.tg}</b></span><span class="pill">WA <b>${b.wa}</b></span><span class="pill"><b>${b.mockups}</b> макетов</span><span class="pill"><b>${b.sent}</b> отправлено</span></div>`).join(""):'<div class="mut">Баз пока нет. Нажмите «Новая база».</div>';
+  Q("#blist button").forEach(x=>x.onclick=async()=>{const n=x.dataset.n,a=x.dataset.a;
+    if(a==="open"){const r=await post(`/api/bases/${encodeURIComponent(n)}/open`);if(!r.ok)return alert(r.j.error||"Ошибка");go("maps");poll(true);}
+    else if(a==="del"){if(confirm("Удалить файл "+n+"?")){await api(`/api/bases/${encodeURIComponent(n)}`,{method:"DELETE"});loadBases();}}
+    else{preset=n;go(a);}});}
+let preset="";$("bsearch").oninput=renderBases;$("brefresh").onclick=loadBases;$("bnew").onclick=()=>go("maps");
+async function fillBases(){const{j}=await api("/api/overview");const o=(j.bases||[]).map(b=>`<option value="${esc(b.name)}">${esc(b.name)}</option>`).join("")||'<option value="">— нет баз —</option>';
+  ["m_base","m_base2","o_base"].forEach(i=>{$(i).innerHTML=o;if(preset)$(i).value=preset;});preset="";}
+/* ---------- карты ---------- */
+let tab="all",cities=[],timer=null;
+const filters=()=>({no_site:$("f_no_site").checked,has_site:$("f_has_site").checked&&!$("f_no_site").checked,has_phone:$("f_has_phone").checked,has_email:$("f_has_email").checked,
+  vk:$("f_vk").checked,tg:$("f_tg").checked,wa:$("f_wa").checked,messengers_mode:$("f_mode").value,only_no_messengers:$("f_only_no_msg").checked,min_rating:$("f_rating").value});
+const qs=()=>"filters="+encodeURIComponent(JSON.stringify(filters()))+"&tab="+tab;
+api("/api/cities").then(({j})=>{cities=j;$("ccount").textContent=`${j.length} городов · крупнейшие сначала. Можно ввести любой город вручную; для нескольких — через запятую.`;
+  $("mil").innerHTML=j.filter(c=>c.population>=1000000).slice(0,17).map(c=>`<span class="chip">${esc(c.name)}</span>`).join("");Q("#mil .chip").forEach(c=>c.onclick=()=>addCity(c.textContent));});
+function addCity(n){const raw=$("cities").value,done=/,\s*$/.test(raw)||!raw.trim();let l=raw.split(",").map(s=>s.trim()).filter(Boolean);if(!done)l.pop();
+  l=l.filter(x=>x.toLowerCase()!==n.toLowerCase());l.push(n);$("cities").value=l.join(", ")+", ";$("sug").style.display="none";$("cities").focus();}
+function showSug(list){const u=$("sug");u.innerHTML=list.map(c=>`<li data-n="${esc(c.name)}">${esc(c.name)} <small>${esc(c.region)}</small></li>`).join("");u.style.display=list.length?"block":"none";Q("#sug li").forEach(l=>l.onclick=()=>addCity(l.dataset.n));}
+$("cities").oninput=()=>{const q=$("cities").value.split(",").pop().trim().toLowerCase();showSug(q.length<2?[]:cities.filter(c=>c.name.toLowerCase().startsWith(q)).slice(0,10));};
+$("cdrop").onclick=()=>showSug($("sug").style.display==="block"?[]:cities.slice(0,40));
+Q(".ex").forEach(c=>c.onclick=()=>{const v=$("rubrics").value.trim();$("rubrics").value=v?v.replace(/,\s*$/,"")+", "+c.textContent:c.textContent;});
+$("start").onclick=async()=>{$("err").textContent="";const r=await post("/api/start",{cities:$("cities").value.replace(/,\s*$/,""),rubrics:$("rubrics").value,limit:$("limit").value});
+  if(!r.ok){$("err").textContent=r.j.error;return;}poll();};
+$("stop").onclick=()=>post("/api/stop");
+function renderTabs(c){$("tabs").innerHTML=[["all","Все"],["no_site","Без сайта"],["vk","ВКонтакте"],["tg","Telegram"],["wa","WhatsApp"]].map(([k,n])=>`<span class="tab ${tab===k?"on":""}" data-t="${k}">${n}<b>${c?c[k]:0}</b></span>`).join("");
+  Q("#tabs .tab").forEach(e=>e.onclick=()=>{tab=e.dataset.t;poll(true);});}
+const lk=(a)=>(a||[]).map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/,""))}</a>`).join("<br>");
+async function poll(once){const{j:d}=await api("/api/status?"+qs());$("start").disabled=d.running;$("stop").disabled=!d.running;$("err").textContent=d.error||"";
+  $("state").textContent=d.running?"⏳ Идёт сбор…":(d.total?`Собрано: ${d.total}`:"");$("shown").textContent=`Показано: ${d.shown} из ${d.total}`+(d.shown>100?" (первые 100; всё — в XLSX)":"");renderTabs(d.counters);
+  $("rows").innerHTML=d.rows.map(r=>`<tr><td class="w">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>`:esc(r.name)}</td><td class="w">${esc(r.address)}</td><td>${(r.phones||[]).map(esc).join("<br>")}</td>
+   <td>${r.site?lk([r.site]):'<span class="mut">нет</span>'}</td><td>${lk(r.vk)}</td><td>${lk(r.tg)}</td><td>${lk(r.wa)}</td><td>${(r.email||[]).map(esc).join("<br>")}</td><td>${esc(r.rating??"")}</td></tr>`).join("");
+  clearTimeout(timer);if(d.running&&!once)timer=setTimeout(poll,1500);}
+Q("#maps input[id^=f_],#f_mode").forEach(e=>e.onchange=()=>poll(true));$("export").onclick=()=>{location.href="/api/export?"+qs();};
+$("bcheck").onclick=async()=>{$("bstat").textContent="Проверяю…";const{j}=await api("/api/check-browser");$("bstat").innerHTML=j.ok?`<span class="ok">● Готов к работе</span> · Chromium ${esc(j.version)}`:`<span style="color:var(--er)">Ошибка: ${esc(j.error)}</span>`;};
+/* ---------- макеты ---------- */
+$("m_go").onclick=async()=>{if(!$("m_base").value)return;$("m_msg").textContent="Генерирую…";const r=await post("/api/mockups/generate",{base:$("m_base").value,overwrite:$("m_over").checked});
+  $("m_msg").innerHTML=r.ok?`<span class="ok">Создано: ${r.j.made}, пропущено: ${r.j.skipped}</span><br>${esc(r.j.folder)}`:esc(r.j.error||"Ошибка");};
+$("m_zip").onclick=async()=>{const r=await fetch("/api/mockups/zip?base="+encodeURIComponent($("m_base2").value));if(!r.ok)return alert((await r.json()).error||"Ошибка");
+  const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="sites.zip";a.click();};
+/* ---------- рассылка ---------- */
+async function loadSettings(){const{j:s}=await api("/api/settings");$("s_headless").checked=s.headless;$("s_deep").checked=s.deep_contact_search;$("s_geo").checked=s.geo_grid_search;
+  $("s_par").value=s.parallel_workers;$("s_max").value=s.max_results;$("s_prov").value=s.ai_provider;$("k1").textContent=s.deepseek_api_key_set?"(задан)":"";$("k2").textContent=s.gemini_api_key_set?"(задан)":"";
+  $("o_tpl").value=$("o_tpl").value||s.outreach_template;}
+$("o_load").onclick=async()=>{if(!$("o_base").value)return;const ch=$("o_ch").value;await post("/api/settings",{outreach_template:$("o_tpl").value});
+  const{j}=await api(`/api/outreach?base=${encodeURIComponent($("o_base").value)}&channel=${ch}&template=${encodeURIComponent($("o_tpl").value)}`);const it=j.items||[];
+  $("o_msg").textContent=`Контактов: ${it.length}, отмечено: ${it.filter(i=>i.done).length}`;
+  $("o_list").innerHTML=it.length?it.map((i,n)=>`<div class="bar" style="padding:8px 0;border-bottom:1px solid var(--ln)"><label class="chk" style="margin:0"><input type="checkbox" data-k="${esc(i.key)}" ${i.done?"checked":""}></label>
+   <span style="flex:1;min-width:200px">${esc(i.name)}<br><span class="mut">${esc(i.key)}</span></span><button class="ghost" data-n="${n}">Открыть${ch==="wa"?"":" и скопировать текст"}</button></div>`).join(""):'<div class="mut">Нет контактов этого канала в базе.</div>';
+  Q("#o_list button").forEach(b=>b.onclick=async()=>{const i=it[b.dataset.n];if(ch!=="wa"){try{await navigator.clipboard.writeText(i.text)}catch(e){}}window.open(i.link,"_blank","noopener");});
+  Q("#o_list input").forEach(c=>c.onchange=()=>post("/api/outreach/mark",{base:$("o_base").value,key:c.dataset.k,done:c.checked}));};
+$("o_ai").onclick=async()=>{$("o_msg").textContent="Генерирую…";const r=await post("/api/ai",{prompt:"Напиши короткое (3-4 предложения) вежливое первое сообщение для владельца бизнеса «{name}» с предложением услуг по созданию сайта. Без эмодзи, на русском. Сохрани плейсхолдер {name}. Только текст сообщения."});
+  if(r.ok){$("o_tpl").value=r.j.text.trim();$("o_msg").textContent="Готово";}else $("o_msg").textContent=r.j.error;};
+/* ---------- AI / настройки ---------- */
+$("ai_go").onclick=async()=>{const q=$("ai_q").value.trim();if(!q)return;$("ai_msg").textContent="Думаю…";$("ai_out").textContent="";const r=await post("/api/ai",{prompt:q});$("ai_msg").textContent="";$("ai_out").textContent=r.ok?r.j.text:"Ошибка: "+r.j.error;};
+$("s_save").onclick=async()=>{await post("/api/settings",{headless:$("s_headless").checked,deep_contact_search:$("s_deep").checked,geo_grid_search:$("s_geo").checked,parallel_workers:$("s_par").value,max_results:$("s_max").value,ai_provider:$("s_prov").value,deepseek_api_key:$("s_dk").value,gemini_api_key:$("s_gk").value});
+  $("s_dk").value=$("s_gk").value="";$("s_msg").textContent="Сохранено";setTimeout(()=>$("s_msg").textContent="",2000);loadSettings();};
+/* ---------- инструкция ---------- */
+const H=[["Первый запуск","Распакуйте архив целиком. Откройте «Яндекс Карты», выберите город из подсказок, укажите рубрику (например «Детейлинг») и лимит 30 для пробного сбора. Нажмите «Начать сбор». Окно браузера может открыться — это нормально."],
+["Сбор компаний","Города и рубрики — через запятую. Лимит действует на каждую пару город/рубрика. Повторные компании пропускаются. Глубокий поиск ищет VK/Telegram/WhatsApp/email на сайте компании. Результат автоматически сохраняется в <code>databases</code>."],
+["Фильтры без сайта и мессенджеры","«Без сайта» — компании, у которых нет собственного сайта (соцсети и агрегаторы сайтом не считаются). ВК / Telegram / WhatsApp можно искать отдельно чекбоксами или вкладками над таблицей; у вкладок свои счётчики. Кнопка «Скачать XLSX» выгружает текущую вкладку с фильтрами."],
+["Базы и Excel","Раздел «Базы данных» показывает статистику по файлам: контакты, готовые (с телефоном), без сайта, VK/TG/WA, макеты, отправленные. «Открыть базу» загружает её в таблицу с фильтрами."],
+["Макеты сайтов","Выберите базу и нажмите «Сгенерировать сайты» — для каждой компании создаётся HTML в <code>websites/имя_базы</code>. Нейросеть не нужна. ZIP можно скачать для ручной доработки."],
+["Рассылка","Для выбранной базы и канала показываются контакты. Кнопка открывает чат; для Telegram и ВК текст копируется в буфер — просто вставьте. Отметьте галочкой отправленные, чтобы не писать дважды. Отправлять по спам-базам нельзя: соблюдайте закон о рекламе."],
+["AI-ассистент","Нужен ключ DeepSeek или Gemini в Настройках. Помогает с нишами и текстами предложений. Для сбора и макетов ключи не нужны."],
+["Настройки","Фоновый режим, число обработчиков (1–8), лимит, глубокий поиск, расширение по районам. Ключи AI хранятся локально в settings.json."],
+["Если что-то не работает","Капча: выключите фоновый режим и пройдите её в окне браузера. Нет Chromium: «Яндекс Карты» → «Проверить браузер». Сетевая ошибка: проверьте интернет. Журнал — внизу окна: «Открыть журнал»."]];
+$("toc").innerHTML=H.map((h,i)=>`<button data-i="${i}" class="${i?"":"on"}">${String(i+1).padStart(2,"0")}  ${esc(h[0])}</button>`).join("");
+$("topics").innerHTML=H.map((h,i)=>`<div class="topic ${i?"":"on"}" data-i="${i}"><h3>${esc(h[0])}</h3><p>${h[1]}</p></div>`).join("");
+function showT(i){Q("#toc button,.topic").forEach(e=>e.classList.toggle("on",+e.dataset.i===i));}
+Q("#toc button").forEach(b=>b.onclick=()=>showT(+b.dataset.i));
+$("h_q").oninput=()=>{const q=$("h_q").value.toLowerCase().trim();if(!q)return;const i=H.findIndex(h=>(h[0]+h[1]).toLowerCase().includes(q));if(i>=0)showT(i);};
+renderTabs();loadBases();poll(true);tail();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+__pycache__/
+.venv/
+build/
+dist/
+browsers/
+settings.json
+sent.json
+databases/*.xlsx
+websites/*/
+logs/
+*.spec
