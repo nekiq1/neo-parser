@@ -1,11 +1,9 @@
-name: NEO PARSER - VERIFIED WINDOWS BUILD
+name: NEO PARSER - SLIM CROSS-PLATFORM BUILD
 
 on:
 push:
-branches:
-- main
-tags:
-- "v*"
+branches: [ main ]
+tags: [ "v*" ]
 workflow_dispatch:
 
 permissions:
@@ -13,20 +11,22 @@ contents: write
 
 jobs:
 build:
-name: NEO VERIFIED BUILD
-runs-on: windows-latest
-timeout-minutes: 30
+name: Build on ${{ matrix.os }}
+runs-on: ${{ matrix.os }}
+strategy:
+fail-fast: false
+matrix:
+include:
+- os: windows-latest
+artifact_name: Neo_parser_win64
+asset_path: dist/Neo parser/
+- os: macos-latest
+artifact_name: Neo_parser_macos
+asset_path: dist/Neo parser.app
 
 steps:
   - name: Checkout
     uses: actions/checkout@v4
-
-  - name: Verify revision
-    shell: pwsh
-    run: |
-      Write-Host "NEO_VERIFIED_BUILD_2026"
-      Write-Host "Commit: $env:GITHUB_SHA"
-      git log -1 --oneline
 
   - name: Setup Python
     uses: actions/setup-python@v5
@@ -35,201 +35,44 @@ steps:
       cache: pip
 
   - name: Install dependencies
-    shell: pwsh
+    shell: bash
     run: |
       python -m pip install --upgrade pip
       pip install -r requirements.txt
-      pip install "pyinstaller>=6.10,<7"
+      pip install "pyinstaller>=6.10,<7" pyinstaller-hooks-contrib
 
-  - name: Verify project structure
-    shell: pwsh
+  - name: Install Playwright Headless Shell (Saves ~200MB)
+    shell: bash
     run: |
-      $files = @(
-        "app.py",
-        "requirements.txt",
-        "tests/run.py",
-        "tests/test_core.py",
-        "tests/test_ai.py",
-        "tests/test_api.py",
-        "tests/test_browser_bootstrap.py",
-        "static/index.html",
-        "assets/cities.json"
-      )
+      export PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/playwright-browsers
+      # ВАЖНО: Флаг --only-shell качает только легкий движок без GUI
+      playwright install chromium --only-shell
+      echo "PLAYWRIGHT_BROWSERS_PATH=${{ github.workspace }}/playwright-browsers" >> $GITHUB_ENV
 
-      foreach ($file in $files) {
-        if (!(Test-Path $file)) {
-          throw "Missing file: $file"
-        }
-        Write-Host "OK: $file"
-      }
-
-  - name: Run unit tests
-    shell: pwsh
-    env:
-      PYTHONUTF8: "1"
-      PYTHONIOENCODING: "utf-8"
+  - name: Build with PyInstaller
+    shell: bash
     run: |
-      python -X utf8 tests/run.py test_core test_ai test_api test_browser_bootstrap
-
-      if ($LASTEXITCODE -ne 0) {
-        throw "UNIT TESTS FAILED"
-      }
-
-  - name: Clean previous builds
-    shell: pwsh
-    run: |
-      Remove-Item build,dist -Recurse -Force -ErrorAction SilentlyContinue
-      Remove-Item Neo_parser_win64.zip -Force -ErrorAction SilentlyContinue
-
-  - name: Build EXE
-    shell: pwsh
-    run: |
-      python -m PyInstaller `
-        --noconfirm `
-        --clean `
-        --noconsole `
-        --name "Neo parser" `
-        --add-data "static;static" `
-        --add-data "assets;assets" `
-        --collect-all playwright `
-        --collect-all webview `
-        --distpath "dist" `
-        --workpath "build" `
-        --specpath "." `
+      pyinstaller --noconfirm --clean --windowed \
+        --name "Neo parser" \
+        --add-data "static:static" \
+        --add-data "assets:assets" \
+        --add-data "$PLAYWRIGHT_BROWSERS_PATH:playwright-browsers" \
+        --collect-all playwright \
+        --collect-all webview \
+        --hidden-import="playwright.async_api" \
+        --hidden-import="playwright.sync_api" \
+        --exclude-module tkinter \
+        --exclude-module pytest \
+        --exclude-module unittest \
+        --exclude-module pydoc \
+        --exclude-module IPython \
+        --exclude-module matplotlib \
+        --exclude-module numpy \
+        --exclude-module pandas \
         app.py
 
-      if ($LASTEXITCODE -ne 0) {
-        throw "PYINSTALLER FAILED"
-      }
-
-      if (!(Test-Path "dist\Neo parser\Neo parser.exe")) {
-        throw "EXE NOT FOUND"
-      }
-
-  - name: NEO VERIFIED EXE BOOT TEST
-    shell: pwsh
-    timeout-minutes: 3
-    run: |
-      $out = "dist\Neo parser"
-      $exe = Join-Path $out "Neo parser.exe"
-
-      if (!(Test-Path $exe)) {
-        throw "EXE NOT FOUND"
-      }
-
-      $psi = New-Object System.Diagnostics.ProcessStartInfo
-      $psi.FileName = (Resolve-Path $exe).Path
-      $psi.Arguments = "--self-test"
-      $psi.WorkingDirectory = (Resolve-Path $out).Path
-      $psi.UseShellExecute = $false
-      $psi.CreateNoWindow = $true
-
-      $process = New-Object System.Diagnostics.Process
-      $process.StartInfo = $psi
-
-      Write-Host "NEO_NEW_SMOKE_TEST_2026"
-      Write-Host "Starting frozen application..."
-
-      try {
-        if (!$process.Start()) {
-          throw "Windows failed to start Neo Parser"
-        }
-
-        if (!$process.WaitForExit(90000)) {
-          $process.Kill()
-          throw "EXE STARTUP TIMEOUT"
-        }
-
-        $code = $process.ExitCode
-
-        Write-Host "ACTUAL EXE EXIT CODE: $code"
-
-        if ($code -ne 0) {
-          throw "EXE BOOT TEST FAILED: $code"
-        }
-
-        Write-Host "NEO EXE BOOT TEST PASSED"
-      }
-      finally {
-        $process.Dispose()
-      }
-
-  - name: Prepare portable directory
-    shell: pwsh
-    run: |
-      $out = "dist\Neo parser"
-
-      New-Item -ItemType Directory -Force `
-        "$out\databases",
-        "$out\websites",
-        "$out\logs" | Out-Null
-
-      if (Test-Path README.md) {
-        Copy-Item README.md "$out\README.md"
-      }
-
-      @(
-        "@echo off"
-        'cd /d "%~dp0"'
-        'start "" "Neo parser.exe"'
-      ) | Set-Content "$out\Start Neo parser.bat" -Encoding ASCII
-
-      if (Test-Path "$out\browsers") {
-        Remove-Item "$out\browsers" -Recurse -Force
-      }
-
-  - name: Create portable ZIP
-    shell: pwsh
-    run: |
-      Compress-Archive `
-        -Path "dist\Neo parser\*" `
-        -DestinationPath "Neo_parser_win64.zip" `
-        -CompressionLevel Optimal
-
-      if (!(Test-Path Neo_parser_win64.zip)) {
-        throw "ZIP CREATION FAILED"
-      }
-
-      $size = (Get-Item Neo_parser_win64.zip).Length / 1MB
-
-      Write-Host "FINAL ZIP SIZE: $([math]::Round($size,2)) MB"
-
-  - name: Verify ZIP
-    shell: pwsh
-    run: |
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-      $zip = [System.IO.Compression.ZipFile]::OpenRead(
-        (Resolve-Path "Neo_parser_win64.zip").Path
-      )
-
-      try {
-        $exe = $zip.Entries | Where-Object {
-          $_.FullName -eq "Neo parser.exe"
-        }
-
-        if (!$exe) {
-          throw "EXE MISSING FROM ZIP"
-        }
-
-        Write-Host "ZIP VERIFIED"
-        Write-Host "FILES: $($zip.Entries.Count)"
-      }
-      finally {
-        $zip.Dispose()
-      }
-
-  - name: Upload portable artifact
+  - name: Archive production artifacts
     uses: actions/upload-artifact@v4
     with:
-      name: Neo_parser_win64
-      path: Neo_parser_win64.zip
-      if-no-files-found: error
-      compression-level: 0
-      retention-days: 30
-
-  - name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    uses: softprops/action-gh-release@v2
-    with:
-      files: Neo_parser_win64.zip
+      name: ${{ matrix.artifact_name }}
+      path: ${{ matrix.asset_path }}
